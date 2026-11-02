@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { StandaloneWarning } from "./StandaloneWarning";
 import { Rin, RIN_MOODS, type RinMood } from "./Rin";
 import {
   detectEnv,
+  speechLog,
   useJapaneseVoices,
   useRecognition,
   useSpeaker,
@@ -26,6 +28,12 @@ export function VoiceCheck() {
   const [voiceName, setVoiceName] = useState<string>("");
   const [pendingReply, setPendingReply] = useState<string | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
+  const [events, setEvents] = useState<string[]>([]);
+  useEffect(() => {
+    const update = () => setEvents([...speechLog]);
+    window.addEventListener("rin-speech-log", update);
+    return () => window.removeEventListener("rin-speech-log", update);
+  }, []);
 
   const voices = useJapaneseVoices();
   const voice = voices.find((v) => v.name === voiceName) ?? voices[0];
@@ -60,9 +68,13 @@ export function VoiceCheck() {
 
   const onListen = () => {
     speaker.unlock();
+    if (rec.listening) {
+      rec.stop();
+    } else {
+      // start は読み上げ中(unlock の無音を含む)なら止めて少し待ってから聞き始める
+      rec.start();
+    }
     speaker.cancel();
-    if (rec.listening) rec.stop();
-    else rec.start();
   };
 
   return (
@@ -83,6 +95,7 @@ export function VoiceCheck() {
         >
           {rec.listening ? "とめる" : "はなす"}
         </button>
+        <StandaloneWarning />
         {rec.error && (
           <p role="alert" className="w-full rounded-2xl bg-rose-100 p-4 text-xl text-rose-900">
             {rec.error}
@@ -175,6 +188,18 @@ export function VoiceCheck() {
           <p className="text-xl">しらべています…</p>
         )}
         {env && <p className="break-all text-sm text-zinc-500">{env.userAgent}</p>}
+      </section>
+
+      <section className="flex flex-col gap-3 rounded-3xl bg-white p-6 shadow">
+        <h2 className="text-2xl font-bold">音声の動き(原因調べ用)</h2>
+        <button
+          type="button"
+          onClick={() => navigator.clipboard.writeText(events.join("\n"))}
+          className="self-start rounded-xl bg-amber-100 px-4 py-2 text-lg"
+        >
+          コピー
+        </button>
+        <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-sm">{events.join("\n") || "まだありません"}</pre>
       </section>
 
       <section className="flex flex-col gap-3 rounded-3xl bg-white p-6 shadow">
