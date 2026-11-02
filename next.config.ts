@@ -1,9 +1,8 @@
 import type { NextConfig } from "next";
+import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  cacheComponents: true,
-  partialPrefetching: true,
+  // Cloudflare の実行環境では Cache Components がページを止めてしまう(setTimeout の実装の違い)ので使わない
   turbopack: {
     rules: {
       "*.css": {
@@ -15,3 +14,5 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+
+initOpenNextCloudflareForDev();

@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rin-chan",
+  "account_id": "92ba3d870844d6a7582510fa6b2156b7",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  }
+  // ANTHROPIC_API_KEY と RIN_PROFILE_JSON は `wrangler secret put` で入れる(リポジトリには書かない)
+}
