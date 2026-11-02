@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { loadProfile } from "../../lib/profile";
+import { resolveProfile } from "../../lib/profile";
 import { buildSystemPrompt, REASK_INSTRUCTIONS, reaskEndMessage } from "../../lib/prompt";
 
 // 返事の速さを優先して Haiku を使う(CLAUDE.md の技術構成)
@@ -10,13 +10,16 @@ type TalkRequest = {
   messages: Anthropic.MessageParam[];
   // 何回目の聞き返しか。0 はふつうの会話
   reask: 0 | 1 | 2 | 3;
+  // iPad に保存された家族の登録内容(写真は含まない)
+  profile?: unknown;
 };
 
 export async function POST(request: Request) {
-  const { messages, reask } = (await request.json()) as TalkRequest;
-  // 本番は wrangler の secret、開発中は .dev.vars から(どちらもビルドには入らない)
+  const body = (await request.json()) as TalkRequest;
+  const { messages, reask } = body;
+  const { profile } = resolveProfile(body.profile);
+  // API キーは本番は wrangler の secret、開発中は .dev.vars から(どちらもビルドには入らない)
   const env = getCloudflareContext().env as Record<string, string | undefined>;
-  const { profile } = await loadProfile(env.RIN_PROFILE_JSON);
   const fallback = `ごめんなさい、いま、うまくお返事できません。${profile.familyCallName}に聞いてみましょうね。`;
 
   // 3回目の聞き返しは Claude を使わず、やさしく終える

@@ -1,32 +1,29 @@
 import "server-only";
 import sample from "../../samples/profile.json";
+import { KINDS, type Profile } from "./types";
 
-export type ManualEntry = { kind: "物" | "人" | "場所"; name: string; note: string };
+const SAMPLE = sample as Profile;
 
-export type Profile = {
-  assistantName: string;
-  userCallName: string;
-  familyCallName: string;
-  words: { say: string; means: string }[];
-  manual: ManualEntry[];
-};
+const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
-// 本物の呼び名や家族の情報はリポジトリに入れない。
-// 本番は secret の RIN_PROFILE_JSON、開発中は private/profile.json、どちらもなければ架空のサンプル
-export async function loadProfile(
-  profileJson?: string,
-): Promise<{ profile: Profile; source: string }> {
-  if (profileJson) {
-    return { profile: JSON.parse(profileJson), source: "secret" };
-  }
-  if (process.env.NODE_ENV === "development") {
-    try {
-      const { readFile } = await import("node:fs/promises");
-      const text = await readFile(`${process.cwd()}/private/profile.json`, "utf8");
-      return { profile: JSON.parse(text), source: "private" };
-    } catch {
-      // private/ がなければサンプルで動かす
-    }
-  }
-  return { profile: sample as Profile, source: "sample" };
+// 家族の情報はサーバーに置かず、iPad から毎回受け取る。
+// 受け取ったものは長さをそろえて使い、どこにも保存しない。登録がなければ架空のサンプルで動かす
+export function resolveProfile(input: unknown): { profile: Profile; source: "ipad" | "sample" } {
+  if (!input || typeof input !== "object") return { profile: SAMPLE, source: "sample" };
+  const p = input as Partial<Record<keyof Profile, unknown>>;
+  const words = Array.isArray(p.words) ? p.words : [];
+  const manual = Array.isArray(p.manual) ? p.manual : [];
+  return {
+    source: "ipad",
+    profile: {
+      assistantName: text(p.assistantName, 20) || SAMPLE.assistantName,
+      userCallName: text(p.userCallName, 20) || "あなた",
+      familyCallName: text(p.familyCallName, 20) || "ご家族",
+      words: words.slice(0, 100).map((w) => ({ say: text(w?.say, 30), means: text(w?.means, 60) })),
+      manual: manual
+        .slice(0, 200)
+        .filter((m) => KINDS.includes(m?.kind))
+        .map((m) => ({ kind: m.kind, name: text(m.name, 40), note: text(m.note, 400) })),
+    },
+  };
 }

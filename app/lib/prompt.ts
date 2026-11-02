@@ -1,5 +1,5 @@
 import "server-only";
-import type { Profile } from "./profile";
+import type { Profile } from "./types";
 
 // 本人への話し方の方針(CLAUDE.md)をそのままシステムプロンプトにする。
 // 家族ごとに違う部分は profile から差し込む
