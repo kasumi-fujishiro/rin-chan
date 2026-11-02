@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 家族の本物のデータ・録音(公開しない)
+private/
+recordings/
