@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type Anthropic from "@anthropic-ai/sdk";
 import { StandaloneWarning } from "./StandaloneWarning";
@@ -119,8 +120,9 @@ export function Talk() {
           onPointerDown={holdStart}
           onPointerUp={holdEnd}
           onPointerLeave={holdEnd}
+          onPointerCancel={holdEnd}
           onContextMenu={(e) => e.preventDefault()}
-          className="select-none [-webkit-touch-callout:none]"
+          className="touch-none select-none [-webkit-touch-callout:none]"
         >
           <Rin mood={mood} size={photoUrl ? 200 : 340} />
         </div>
@@ -154,6 +156,10 @@ export function Talk() {
       {!profile && (
         <p className="text-base text-zinc-400">まだ家族の登録がありません(見本の内容で動いています)</p>
       )}
+      {/* 長押しが使えないときのための入口。本人の目に入りにくいよう、小さく薄くする */}
+      <Link href="/family" className="fixed right-4 bottom-3 text-sm text-zinc-400">
+        家族の方へ
+      </Link>
     </main>
   );
 }

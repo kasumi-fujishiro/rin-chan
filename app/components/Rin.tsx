@@ -21,7 +21,9 @@ export function Rin({ mood, size = 280 }: { mood: RinMood; size?: number }) {
           key={m}
           src={`/rin_${m}.svg`}
           alt=""
-          className={`absolute inset-0 h-full w-full transition-opacity duration-300 ${
+          draggable={false}
+          // 画像自体はタッチを受けない(iPad の長押しで画像のプレビューが出て、外側の長押しを横取りするため)
+          className={`pointer-events-none absolute inset-0 h-full w-full select-none transition-opacity duration-300 [-webkit-touch-callout:none] ${
             m === mood ? "opacity-100" : "opacity-0"
           } ${m === "speaking" && mood === "speaking" ? "animate-rin-talk" : ""}`}
         />
