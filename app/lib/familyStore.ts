@@ -1,6 +1,6 @@
 "use client";
 
-import type { Kind, Profile, Word } from "./types";
+import { KINDS, type Kind, type Profile, type Word } from "./types";
 
 // 家族が登録した情報は、この iPad の IndexedDB にだけ保存する(サーバーには置かない)
 export type Settings = {
@@ -117,4 +117,93 @@ export async function shrinkPhoto(file: File, maxSide = 1200): Promise<Blob> {
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+// ---- バックアップ(書き出し・読み込み) ----
+// 写真も含めて1つの JSON ファイルにする。保存先は家族のスマホや PC で、サーバーには置かない
+const BACKUP_FORMAT = "rin-family-backup";
+
+type BackupEntry = Omit<Entry, "photo"> & { photo?: string };
+type Backup = {
+  format: typeof BACKUP_FORMAT;
+  version: 1;
+  exportedAt: string;
+  settings: Settings | null;
+  entries: BackupEntry[];
+};
+
+const blobToDataUrl = (blob: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+
+export async function exportBackup(): Promise<File> {
+  const [settings, entries] = await Promise.all([getSettings(), listEntries()]);
+  const backup: Backup = {
+    format: BACKUP_FORMAT,
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    settings,
+    entries: await Promise.all(
+      entries.map(async (e) => ({ ...e, photo: e.photo ? await blobToDataUrl(e.photo) : undefined })),
+    ),
+  };
+  const date = new Date().toLocaleDateString("sv-SE"); // 2026-11-03 の形
+  return new File([JSON.stringify(backup)], `rin-backup-${date}.json`, { type: "application/json" });
+}
+
+// 今の登録をすべて消して、バックアップの内容に置き換える
+export async function importBackup(file: File): Promise<{ entries: number }> {
+  let backup: Backup;
+  try {
+    backup = JSON.parse(await file.text());
+  } catch {
+    throw new Error("ファイルを読めませんでした");
+  }
+  if (backup?.format !== BACKUP_FORMAT || !Array.isArray(backup.entries)) {
+    throw new Error("リンちゃんのバックアップファイルではありません");
+  }
+  const entries: Entry[] = await Promise.all(
+    backup.entries.filter((e) => KINDS.includes(e?.kind) && e.name).map(async (e) => ({
+      id: e.id || crypto.randomUUID(),
+      kind: e.kind,
+      name: e.name,
+      note: e.note ?? "",
+      updatedAt: e.updatedAt ?? Date.now(),
+      photo: e.photo ? await (await fetch(e.photo)).blob() : undefined,
+    })),
+  );
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction([SETTINGS, ENTRIES], "readwrite");
+    const store = tx.objectStore(ENTRIES);
+    store.clear();
+    for (const e of entries) store.put(e);
+    if (backup.settings) tx.objectStore(SETTINGS).put(backup.settings, "main");
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  return { entries: entries.length };
+}
+
+// iPad では共有シート(AirDrop・ファイル・LINE など)で渡す。使えなければダウンロードする
+export async function saveBackupFile(file: File): Promise<"shared" | "downloaded" | "cancelled"> {
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: "リンちゃんのバックアップ" });
+      return "shared";
+    } catch (err) {
+      if ((err as DOMException)?.name === "AbortError") return "cancelled";
+    }
+  }
+  const url = URL.createObjectURL(file);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = file.name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  return "downloaded";
 }

@@ -5,10 +5,13 @@ import { useEffect, useState } from "react";
 import {
   DEFAULT_SETTINGS,
   deleteEntry,
+  exportBackup,
+  importBackup,
   getSettings,
   listEntries,
   putEntry,
   requestPersist,
+  saveBackupFile,
   saveSettings,
   shrinkPhoto,
   type Entry,
@@ -133,7 +136,78 @@ export function FamilyEditor() {
           {shown.length === 0 && <p className="text-lg text-zinc-500">まだありません。{KIND_HINT[kind]}</p>}
         </ul>
       </section>
+
+      <Backup
+        onImported={async () => {
+          setSettings((await getSettings()) ?? DEFAULT_SETTINGS);
+          setEntries(await listEntries());
+          setEditing(null);
+        }}
+      />
     </main>
+  );
+}
+
+function Backup({ onImported }: { onImported: () => Promise<void> }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <section className={card}>
+      <h2 className="text-2xl font-bold">バックアップ</h2>
+      <p className="text-lg text-zinc-600">
+        写真も含めて1つのファイルにします。ご家族のスマホや PC に保存しておくと、iPad を変えたときやデータが消えたときに戻せます。ファイルには登録した内容がそのまま入るので、扱いに気をつけてください。
+      </p>
+      {!file ? (
+        <button type="button" disabled={busy} className="rounded-2xl bg-amber-600 py-4 text-2xl text-white disabled:opacity-40"
+          onClick={async () => {
+            setBusy(true);
+            setMessage("");
+            try {
+              setFile(await exportBackup());
+            } finally {
+              setBusy(false);
+            }
+          }}>
+          {busy ? "準備しています…" : "バックアップを作る"}
+        </button>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <p className="text-lg">
+            できました({Math.max(1, Math.round(file.size / 1024))}KB)。「送る・保存する」から、AirDrop、ファイル、LINE などで保存先を選んでください。
+          </p>
+          {/* 共有シートはタップの直後にしか開けないので、準備とは別のボタンにする */}
+          <button type="button" className="rounded-2xl bg-amber-600 py-4 text-2xl text-white"
+            onClick={async () => {
+              const result = await saveBackupFile(file);
+              setMessage(result === "cancelled" ? "保存をやめました" : result === "shared" ? "渡しました" : "ダウンロードしました");
+              if (result !== "cancelled") setFile(null);
+            }}>
+            送る・保存する
+          </button>
+        </div>
+      )}
+
+      <label className="cursor-pointer self-start rounded-xl bg-zinc-200 px-4 py-3 text-lg">
+        バックアップから戻す
+        <input type="file" accept="application/json,.json" className="hidden"
+          onChange={async (e) => {
+            const picked = e.target.files?.[0];
+            e.target.value = "";
+            if (!picked) return;
+            if (!confirm("今の登録をすべて、このバックアップの内容に置き換えます。よろしいですか?")) return;
+            try {
+              const { entries } = await importBackup(picked);
+              await onImported();
+              setMessage(`戻しました(${entries} 件)`);
+            } catch (err) {
+              setMessage(err instanceof Error ? err.message : "戻せませんでした");
+            }
+          }} />
+      </label>
+      {message && <p className="text-xl">{message}</p>}
+    </section>
   );
 }
 
