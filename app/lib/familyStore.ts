@@ -11,7 +11,12 @@ export type Settings = {
   // 後から足した項目なので、古い保存データにはない
   memories?: Memory[];
   dayService?: DayService;
+  // リンちゃんの声。iPad に入っている声から、家族が聞き比べて選ぶ
+  voice?: VoiceSetting;
 };
+
+export type VoiceSetting = { name: string; rate: number; pitch: number };
+export const DEFAULT_VOICE: VoiceSetting = { name: "", rate: 0.8, pitch: 1 };
 
 // デイサービスの日。帰ってきたころにリンちゃんから声をかける
 export type DayService = {

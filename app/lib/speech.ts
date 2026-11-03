@@ -214,13 +214,14 @@ export function useSpeaker() {
   const [speaking, setSpeaking] = useState(false);
 
   const speak = useCallback(
-    (text: string, opts: { voice?: SpeechSynthesisVoice; rate?: number } = {}) => {
+    (text: string, opts: { voice?: SpeechSynthesisVoice; rate?: number; pitch?: number } = {}) => {
       if (!("speechSynthesis" in window)) return;
       speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
       u.lang = "ja-JP";
       if (opts.voice) u.voice = opts.voice;
       u.rate = opts.rate ?? 0.8;
+      u.pitch = opts.pitch ?? 1;
       u.onstart = () => {
         logSpeech("読み上げ開始");
         setSpeaking(true);

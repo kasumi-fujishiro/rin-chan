@@ -23,6 +23,7 @@ import { usePhotoUrl } from "../lib/usePhotoUrl";
 import { DictionarySuggestions } from "./DictionarySuggestions";
 import { MemoriesEditor } from "./MemoriesEditor";
 import { SpotPhoto } from "./SpotPhoto";
+import { VoiceChooser } from "./VoiceChooser";
 import { MessageRecorder } from "./MessageRecorder";
 
 const KIND_HINT: Record<Kind, string> = {
@@ -157,6 +158,18 @@ export function FamilyEditor() {
           {shown.length === 0 && <p className="text-lg text-zinc-500">まだありません。{KIND_HINT[kind]}</p>}
         </ul>
       </section>
+
+      <VoiceChooser
+        key={`voice-${restored}-${loaded}`}
+        initial={settings.voice}
+        userCallName={settings.userCallName}
+        onSave={async (voice) => {
+          // 呼び方の欄で編集中のものは保存しない(保存済みの内容に足す)
+          const next = { ...((await getSettings()) ?? DEFAULT_SETTINGS), voice };
+          await saveSettings(next);
+          setSettings((s) => ({ ...s, voice }));
+        }}
+      />
 
       <MemoriesEditor
         key={`memories-${restored}-${loaded}`}

@@ -10,9 +10,10 @@ import { SpotPhoto } from "./SpotPhoto";
 import { PhotoPicker, type PickState } from "./PhotoPicker";
 import { StandaloneWarning } from "./StandaloneWarning";
 import { Rin, type RinMood } from "./Rin";
-import { useRecognition, useSpeaker } from "../lib/speech";
+import { useJapaneseVoices, useRecognition, useSpeaker } from "../lib/speech";
 import { appendTrialLog, isReask, isVague } from "../lib/trialLog";
 import {
+  DEFAULT_VOICE,
   getSettings,
   listEntries,
   listMessages,
@@ -77,6 +78,15 @@ export function Talk() {
   const reaskRef = useRef(0);
   const speaker = useSpeaker();
   useWakeLock();
+  // 家族が選んだ声・速さ・高さで話す。slow は聞き返しなどでさらにゆっくりにするときの倍率
+  const voices = useJapaneseVoices();
+  const [voiceSetting, setVoiceSetting] = useState(DEFAULT_VOICE);
+  const voice = voices.find((v) => v.name === voiceSetting.name);
+  const say = useCallback(
+    (text: string, slow = 1) =>
+      speaker.speak(text, { voice, rate: voiceSetting.rate * slow, pitch: voiceSetting.pitch }),
+    [speaker, voice, voiceSetting],
+  );
 
   useEffect(() => {
     (async () => {
@@ -84,6 +94,7 @@ export function Talk() {
       setEntries(list);
       setMessages(msgs);
       setSettings(settings);
+      if (settings?.voice) setVoiceSetting(settings.voice);
       setProfile(toProfile(settings, list));
       void requestPersist();
     })();
@@ -144,7 +155,7 @@ export function Talk() {
       setBigText(reask >= 2);
       // 本人が新しく話したら、家族の言葉の表示は消す(聞き返しのあいだは残す)
       if (reask === 0) setRelayBig(null);
-      speaker.speak(text, { rate: reask >= 1 ? 0.7 : 0.8 });
+      say(text, reask >= 1 ? 0.88 : 1);
       appendTrialLog({
         at: new Date().toISOString(),
         heard,
@@ -155,7 +166,7 @@ export function Talk() {
       promptRef.current = null;
       setLastActivity(Date.now());
     },
-    [history, speaker, profile, entries],
+    [history, say, profile, entries],
   );
 
   // ---- 「あれ」→ 写真で選ぶ ----
@@ -186,9 +197,9 @@ export function Talk() {
   const showPhotos = useCallback(
     (heard: string, kind: Kind | "不明", candidates: Entry[], byKind: boolean) => {
       setPick({ stage: "photos", heard, kind, candidates, byKind });
-      speaker.speak("これですか?", { rate: 0.8 });
+      say("これですか?");
     },
-    [speaker],
+    [say],
   );
 
   const startPick = useCallback(
@@ -208,10 +219,10 @@ export function Talk() {
         showPhotos(heard, result.kind, result.candidates, false);
       } else {
         setPick({ stage: "kind", heard });
-        speaker.speak("物ですか。人ですか。場所ですか。", { rate: 0.75 });
+        say("物ですか。人ですか。場所ですか。", 0.94);
       }
     },
-    [guess, answer, showPhotos, speaker],
+    [guess, answer, showPhotos, say],
   );
 
   const chooseKind = async (kind: Kind) => {
@@ -235,7 +246,7 @@ export function Talk() {
   const notThis = () => {
     if (pick?.stage === "photos" && !pick.byKind) {
       setPick({ stage: "kind", heard: pick.heard });
-      speaker.speak("物ですか。人ですか。場所ですか。", { rate: 0.75 });
+      say("物ですか。人ですか。場所ですか。", 0.94);
     } else {
       closePick(null);
     }
@@ -259,7 +270,7 @@ export function Talk() {
       const text = `大丈夫ですよ。あとで${profile?.familyCallName ?? "ご家族"}と一緒に見ましょうね。`;
       setReply(text);
       setShown(null);
-      speaker.speak(text, { rate: 0.8 });
+      say(text);
       appendTrialLog({
         at: new Date().toISOString(),
         heard: pick.heard,
@@ -295,7 +306,7 @@ export function Talk() {
       setRelayBig(data.big || null);
       setBigText(false);
       setShown(entry?.photo || entry?.spot ? entry : null);
-      speaker.speak(data.say, { rate: 0.75 });
+      say(data.say, 0.94);
       // このあと本人が「え?」と聞き返したら、いつもの言い直しが働くように会話に入れておく
       setHistory((h) => [
         ...h,
@@ -306,7 +317,7 @@ export function Talk() {
       setLastActivity(Date.now());
       appendTrialLog({ at: new Date().toISOString(), heard, reply: data.say, reask: 0, relay: true });
     },
-    [profile, entries, speaker],
+    [profile, entries, say],
   );
 
   // マイクが閉じてから返事を作る(iOS では同時に使うと読み上げが鳴らないことがある)
@@ -387,7 +398,7 @@ export function Talk() {
   const tapRinPrompt = (prompt: RinPrompt) => {
     rec.stop();
     speaker.unlock();
-    speaker.speak(prompt.text, { rate: 0.8 });
+    say(prompt.text);
     setReply(prompt.text);
     setBigText(false);
     setShown(prompt.entry?.photo ? prompt.entry : null);
