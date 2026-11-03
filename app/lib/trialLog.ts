@@ -7,6 +7,8 @@ export type TrialEntry = {
   reply: string;
   // 0 はふつうの会話、1〜3 は何回目の聞き返しへの返事か
   reask: number;
+  // 「あれ」から写真で選んだとき。chosen が null なら「ちがう」「やめる」
+  pick?: { kind: string; candidates: string[]; chosen: string | null };
 };
 
 const KEY = "rin-trial-log-v1";
@@ -43,4 +45,11 @@ const REASK_PHRASE = /(もう(一|いっ)(回|かい|ぺん|度)|聞こえ|き�
 export function isReask(text: string): boolean {
   const t = text.replace(/[\s。、?!?!]/g, "");
   return t.length > 0 && t.length <= 15 && (REASK_WHOLE.test(t) || REASK_PHRASE.test(t));
+}
+
+// 「あれ」「あの」など、言いかけの言葉。登録した写真から選んでもらうきっかけにする
+const VAGUE = /(あれ|あの|ほら|なんだっけ|何だっけ|なんて言う|何て言う|なんていう|あそこ|あいつ)/;
+
+export function isVague(text: string): boolean {
+  return VAGUE.test(text.replace(/\s/g, ""));
 }
