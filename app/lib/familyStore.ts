@@ -29,8 +29,12 @@ export type Entry = {
   name: string;
   note: string;
   photo?: Blob;
+  // 物の置き場所。「場所」に登録した部屋の写真の上の位置(0〜1)
+  spot?: Spot;
   updatedAt: number;
 };
+
+export type Spot = { roomId: string; x: number; y: number };
 
 // 家族からの伝言(家族が自分の声で録音したもの)。リンちゃんの声とは分けて、本人が押したときだけ流す
 export type Message = {
@@ -134,7 +138,11 @@ export function toProfile(settings: Settings | null, entries: Entry[]): Profile 
     userCallName: s.userCallName || "あなた",
     familyCallName: s.familyCallName || DEFAULT_SETTINGS.familyCallName,
     words: s.words.filter((w) => w.say && w.means),
-    manual: entries.map(({ kind, name, note }) => ({ kind, name, note })),
+    manual: entries.map(({ kind, name, note, spot }) => {
+      // 写真で示した置き場所も、部屋の名前として Claude に伝える(写真そのものは送らない)
+      const room = spot && entries.find((e) => e.id === spot.roomId);
+      return { kind, name, note: room ? `${note}${note ? " " : ""}(置き場所:${room.name})` : note };
+    }),
     memories: (s.memories ?? []).filter((m) => m.title),
   };
 }
@@ -217,6 +225,7 @@ export async function importBackup(file: File): Promise<{ entries: number; messa
       name: e.name,
       note: e.note ?? "",
       updatedAt: e.updatedAt ?? Date.now(),
+      spot: e.spot,
       photo: e.photo ? await (await fetch(e.photo)).blob() : undefined,
     })),
   );

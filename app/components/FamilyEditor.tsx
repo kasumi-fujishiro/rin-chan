@@ -16,11 +16,13 @@ import {
   shrinkPhoto,
   type Entry,
   type Settings,
+  type Spot,
 } from "../lib/familyStore";
 import { KINDS, type Kind } from "../lib/types";
 import { usePhotoUrl } from "../lib/usePhotoUrl";
 import { DictionarySuggestions } from "./DictionarySuggestions";
 import { MemoriesEditor } from "./MemoriesEditor";
+import { SpotPhoto } from "./SpotPhoto";
 import { MessageRecorder } from "./MessageRecorder";
 
 const KIND_HINT: Record<Kind, string> = {
@@ -136,6 +138,7 @@ export function FamilyEditor() {
           ))}
         </div>
         <EntryForm key={editing?.id ?? `new-${kind}`} kind={kind} entry={editing}
+          rooms={entries.filter((e) => e.kind === "場所" && e.photo && e.id !== editing?.id)}
           onDone={async (entry) => {
             if (entry) await putEntry(entry);
             setEntries(await listEntries());
@@ -144,6 +147,7 @@ export function FamilyEditor() {
         <ul className="grid gap-3">
           {shown.map((e) => (
             <EntryRow key={e.id} entry={e} onEdit={() => setEditing(e)}
+              roomName={entries.find((r) => r.id === e.spot?.roomId)?.name}
               onDelete={async () => {
                 if (!confirm(`「${e.name}」を消します。よろしいですか?`)) return;
                 await deleteEntry(e.id);
@@ -245,10 +249,23 @@ function Backup({ onImported }: { onImported: () => Promise<void> }) {
   );
 }
 
-function EntryForm({ kind, entry, onDone }: { kind: Kind; entry: Entry | null; onDone: (e: Entry | null) => void }) {
+function EntryForm({
+  kind,
+  entry,
+  rooms,
+  onDone,
+}: {
+  kind: Kind;
+  entry: Entry | null;
+  // 置き場所を示せる部屋(写真つきの「場所」)
+  rooms: Entry[];
+  onDone: (e: Entry | null) => void;
+}) {
   const [name, setName] = useState(entry?.name ?? "");
   const [note, setNote] = useState(entry?.note ?? "");
   const [photo, setPhoto] = useState<Blob | undefined>(entry?.photo);
+  const [spot, setSpot] = useState<Spot | undefined>(entry?.spot);
+  const room = rooms.find((r) => r.id === spot?.roomId);
   const [busy, setBusy] = useState(false);
   const preview = usePhotoUrl(photo);
 
@@ -260,6 +277,7 @@ function EntryForm({ kind, entry, onDone }: { kind: Kind; entry: Entry | null; o
       name: name.trim(),
       note: note.trim(),
       photo,
+      spot: room ? spot : undefined,
       updatedAt: Date.now(),
     });
   };
@@ -269,8 +287,31 @@ function EntryForm({ kind, entry, onDone }: { kind: Kind; entry: Entry | null; o
       <h3 className="text-xl font-bold">{entry ? `「${entry.name}」を直す` : `「${kind}」を足す`}</h3>
       <input className={field} value={name} placeholder={`名前(${KIND_HINT[kind]})`} onChange={(e) => setName(e.target.value)} />
       <textarea className={field} rows={3} value={note}
-        placeholder="短い説明(例:ふだんは居間のテーブルの、青いケースに入っています)"
+        placeholder={(entry?.kind ?? kind) === "物" ? "短い説明(下で置き場所を写真で示せば、なくても大丈夫です)" : "短い説明(例:ふだんは居間のテーブルの、青いケースに入っています)"}
         onChange={(e) => setNote(e.target.value)} />
+      {(entry?.kind ?? kind) === "物" && (
+        <div className="flex flex-col gap-2 rounded-xl bg-amber-50 p-3">
+          <p className="text-lg font-bold">置き場所を写真で示す</p>
+          {rooms.length === 0 ? (
+            <p className="text-lg text-zinc-600">「場所」に部屋の写真(居間、台所など)を登録すると、その写真の上で置き場所を示せます。</p>
+          ) : (
+            <>
+              <select className={field} value={spot?.roomId ?? ""}
+                onChange={(e) => setSpot(e.target.value ? { roomId: e.target.value, x: 0.5, y: 0.5 } : undefined)}>
+                <option value="">示さない</option>
+                {rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+              {room?.photo && (
+                <>
+                  <p className="text-lg text-zinc-600">写真の上で、置いてある場所を押してください。</p>
+                  <SpotPhoto room={room.photo} spot={spot} className="max-h-80"
+                    onPick={(x, y) => setSpot({ roomId: room.id, x, y })} />
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-4">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         {preview && <img src={preview} alt="" className="h-28 w-28 rounded-xl object-cover" />}
@@ -304,7 +345,17 @@ function EntryForm({ kind, entry, onDone }: { kind: Kind; entry: Entry | null; o
   );
 }
 
-function EntryRow({ entry, onEdit, onDelete }: { entry: Entry; onEdit: () => void; onDelete: () => void }) {
+function EntryRow({
+  entry,
+  roomName,
+  onEdit,
+  onDelete,
+}: {
+  entry: Entry;
+  roomName?: string;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   const url = usePhotoUrl(entry.photo);
   return (
     <li className="flex items-start gap-4 rounded-2xl bg-amber-50 p-3">
@@ -317,6 +368,7 @@ function EntryRow({ entry, onEdit, onDelete }: { entry: Entry; onEdit: () => voi
       <div className="flex-1">
         <p className="text-xl font-bold">{entry.name}</p>
         <p className="text-lg">{entry.note}</p>
+        {roomName && <p className="text-lg text-rose-700">置き場所:{roomName}の写真に印あり</p>}
       </div>
       <div className="flex shrink-0 flex-col gap-2">
         <button type="button" onClick={onEdit} className="rounded-xl bg-amber-100 px-4 py-2 text-lg">直す</button>

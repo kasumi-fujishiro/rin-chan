@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type Anthropic from "@anthropic-ai/sdk";
 import { MessageCard } from "./MessageCard";
 import { RinPromptCard } from "./RinPromptCard";
+import { SpotPhoto } from "./SpotPhoto";
 import { PhotoPicker, type PickState } from "./PhotoPicker";
 import { StandaloneWarning } from "./StandaloneWarning";
 import { Rin, type RinMood } from "./Rin";
@@ -29,11 +30,14 @@ import { markRinPromptUsed, pickRinPrompt, type RinPrompt } from "../lib/rinProm
 type Turn = Anthropic.MessageParam & { content: string };
 
 // 返事に名前が出てきた登録を探す(長い名前を優先)。その写真を大きく見せる
+// 「眼鏡は居間に」のように物と場所が両方出たら、物を優先する(物の置き場所の写真に場所も写るため)
+const KIND_ORDER = { 物: 0, 人: 1, 場所: 2 } as const;
+
 function findMentioned(reply: string, entries: Entry[]): Entry | null {
   return (
     [...entries]
-      .filter((e) => e.photo && e.name && reply.includes(e.name))
-      .sort((a, b) => b.name.length - a.name.length)[0] ?? null
+      .filter((e) => (e.photo || e.spot) && e.name && reply.includes(e.name))
+      .sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || b.name.length - a.name.length)[0] ?? null
   );
 }
 
@@ -105,7 +109,10 @@ export function Talk() {
       setHistory([...messages, { role: "assistant", content: text }]);
       setReply(text);
       // 聞き返されたときは、前の写真をそのまま見せ続ける
-      setShown((prev) => findMentioned(text, entries) ?? (picked?.photo ? picked : reask > 0 ? prev : null));
+      setShown(
+        (prev) =>
+          findMentioned(text, entries) ?? (picked?.photo || picked?.spot ? picked : reask > 0 ? prev : null),
+      );
       // 2回目以降の聞き返しは、画面にも大きな文字で出す
       setBigText(reask >= 2);
       // 本人が新しく話したら、家族の言葉の表示は消す(聞き返しのあいだは残す)
@@ -260,7 +267,7 @@ export function Talk() {
       setReply(data.say);
       setRelayBig(data.big || null);
       setBigText(false);
-      setShown(entry?.photo ? entry : null);
+      setShown(entry?.photo || entry?.spot ? entry : null);
       speaker.speak(data.say, { rate: 0.75 });
       // このあと本人が「え?」と聞き返したら、いつもの言い直しが働くように会話に入れておく
       setHistory((h) => [
@@ -366,7 +373,9 @@ export function Talk() {
   };
 
   // 写真や「ご家族から」を出すときは、ほかを小さくして「はなす」が画面の外に出ないようにする
-  const crowded = !!pick || !!photoUrl || !!relayBig;
+  // 置き場所を写真で示している物は、部屋の写真に印を付けて見せる
+  const room = shown?.spot ? entries.find((e) => e.id === shown.spot!.roomId && e.photo) : undefined;
+  const crowded = !!pick || !!photoUrl || !!room || !!relayBig;
 
   const mood: RinMood = speaker.speaking ? "speaking" : rec.listening ? "listening" : "waiting";
 
@@ -383,13 +392,33 @@ export function Talk() {
         >
           <Rin mood={mood} size={crowded ? 150 : 340} />
         </div>
-        {photoUrl && !pick && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={photoUrl}
-            alt={shown?.name ?? ""}
-            className={`${relayBig ? "max-h-[24dvh]" : "max-h-[36dvh]"} max-w-[60%] rounded-3xl object-contain shadow-lg`}
-          />
+        {room?.photo && shown?.spot && !pick ? (
+          <div className="relative">
+            <SpotPhoto
+              room={room.photo}
+              spot={shown.spot}
+              className={`${relayBig ? "max-h-[24dvh]" : "max-h-[40dvh]"} shadow-lg`}
+            />
+            {photoUrl && (
+              // 物そのものの写真を、部屋の写真の角に小さく重ねる
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={photoUrl}
+                alt={shown.name}
+                className="absolute -right-4 -bottom-4 h-24 w-24 rounded-2xl border-4 border-white object-cover shadow-lg"
+              />
+            )}
+          </div>
+        ) : (
+          photoUrl &&
+          !pick && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={photoUrl}
+              alt={shown?.name ?? ""}
+              className={`${relayBig ? "max-h-[24dvh]" : "max-h-[36dvh]"} max-w-[60%] rounded-3xl object-contain shadow-lg`}
+            />
+          )
         )}
       </div>
       {relayBig && !pick && !rec.listening && !thinking && (
