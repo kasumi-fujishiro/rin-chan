@@ -91,11 +91,11 @@ npm run deploy
 ```
 
 - API キーは `.env*` ではなく `.dev.vars` に置きます(OpenNext は `.env*` をビルドに含めるため)
-- LINE に報告を送るときは、LINE Developers で Messaging API のチャネルを作り、次の2つを secret に入れます(入れていなければ、報告は画面でコピーするだけになります)
+- LINE に報告を送るときは、LINE Developers で Messaging API のチャネル(公式アカウント)を作り、チャネルアクセストークンを secret に入れます。入れていなければ、報告は画面でコピーするだけになります
 
 ```bash
 npx wrangler secret put LINE_CHANNEL_ACCESS_TOKEN   # チャネルアクセストークン(長期)
-npx wrangler secret put LINE_TO                     # 送り先のユーザー ID(U から始まる)
+npx wrangler secret put LINE_TO                     # (任意)送り先のユーザー ID。入れなければ、友だち追加した全員に送る
 ```
 - 家族の登録がないときは `samples/profile.json` の架空のデータで答えます
 

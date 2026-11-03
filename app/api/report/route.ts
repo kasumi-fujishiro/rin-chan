@@ -5,6 +5,8 @@ import { resolveProfile } from "../../lib/profile";
 // 記録の要約なので Sonnet を使う(CLAUDE.md の技術構成)
 const MODEL = "claude-sonnet-5-5";
 const LINE_PUSH = "https://api.line.me/v2/bot/message/push";
+// 送り先の ID がないときは、公式アカウントを友だち追加した家族全員に送る
+const LINE_BROADCAST = "https://api.line.me/v2/bot/message/broadcast";
 // LINE のテキストメッセージは 5000 文字まで
 const LINE_MAX = 5000;
 
@@ -22,7 +24,7 @@ type Record = {
 };
 type Memo = { at: string; text: string };
 
-const lineReady = (env: Env) => Boolean(env.LINE_CHANNEL_ACCESS_TOKEN && env.LINE_TO);
+const lineReady = (env: Env) => Boolean(env.LINE_CHANNEL_ACCESS_TOKEN);
 
 // 画面が「LINE に送る」を出してよいかだけを返す(トークンそのものは返さない)
 export async function GET() {
@@ -42,13 +44,16 @@ export async function POST(request: Request) {
       return Response.json({ sent: false, reason: "LINE の設定がまだです" }, { status: 400 });
     const text = String(body.text ?? "").slice(0, LINE_MAX);
     if (!text.trim()) return Response.json({ sent: false, reason: "報告が空です" }, { status: 400 });
-    const res = await fetch(LINE_PUSH, {
+    const res = await fetch(env.LINE_TO ? LINE_PUSH : LINE_BROADCAST, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}`,
       },
-      body: JSON.stringify({ to: env.LINE_TO, messages: [{ type: "text", text }] }),
+      body: JSON.stringify({
+        ...(env.LINE_TO ? { to: env.LINE_TO } : {}),
+        messages: [{ type: "text", text }],
+      }),
     });
     if (!res.ok) {
       console.error("LINE への送信に失敗", res.status, await res.text());

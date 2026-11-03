@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { DeviceChecklist } from "./DeviceChecklist";
 import { StandaloneWarning } from "./StandaloneWarning";
 import { Rin, RIN_MOODS, type RinMood } from "./Rin";
 import {
@@ -111,6 +112,8 @@ export function VoiceCheck() {
           聞き取った言葉を、リンちゃんが読み返す
         </label>
       </section>
+
+      <DeviceChecklist heard={log.length > 0} />
 
       <section className="flex flex-col gap-4 rounded-3xl bg-white p-6 shadow">
         <h2 className="text-2xl font-bold">読み上げのテスト</h2>
