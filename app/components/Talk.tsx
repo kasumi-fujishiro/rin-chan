@@ -56,6 +56,10 @@ export function Talk() {
   const [now, setNow] = useState(0);
   // 直前にリンちゃんから話しかけたきっかけ。次の本人の言葉を「その反応」として記録する
   const promptRef = useRef<string | null>(null);
+  // 「ご家族が伝える」で聞いている間は true。聞き取った言葉を本人向けに言い直す
+  const [relayMode, setRelayMode] = useState(false);
+  // 家族の言葉の要点。画面に大きく出す
+  const [relayBig, setRelayBig] = useState<string | null>(null);
   const photoUrl = usePhotoUrl(shown?.photo);
   // 直前の返事に対して、何回聞き返されたか
   const reaskRef = useRef(0);
@@ -104,6 +108,8 @@ export function Talk() {
       setShown((prev) => findMentioned(text, entries) ?? (picked?.photo ? picked : reask > 0 ? prev : null));
       // 2回目以降の聞き返しは、画面にも大きな文字で出す
       setBigText(reask >= 2);
+      // 本人が新しく話したら、家族の言葉の表示は消す(聞き返しのあいだは残す)
+      if (reask === 0) setRelayBig(null);
       speaker.speak(text, { rate: reask >= 1 ? 0.7 : 0.8 });
       appendTrialLog({
         at: new Date().toISOString(),
@@ -230,11 +236,55 @@ export function Talk() {
     }
   };
 
+  // ---- 家族の言葉を、本人に伝わる形に言い直す ----
+  const relay = useCallback(
+    async (heard: string) => {
+      setThinking(true);
+      let data: { say?: string; big?: string; entry?: string | null; error?: boolean } = {};
+      try {
+        const res = await fetch("/api/relay", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ heard, profile }),
+        });
+        data = await res.json();
+      } catch {
+        data = { error: true };
+      }
+      setThinking(false);
+      if (!data.say) {
+        setReply("ごめんなさい、うまく聞き取れませんでした。もう一度、押して話してください。");
+        return;
+      }
+      const entry = data.entry ? entries.find((e) => e.name === data.entry) : undefined;
+      setReply(data.say);
+      setRelayBig(data.big || null);
+      setBigText(false);
+      setShown(entry?.photo ? entry : null);
+      speaker.speak(data.say, { rate: 0.75 });
+      // このあと本人が「え?」と聞き返したら、いつもの言い直しが働くように会話に入れておく
+      setHistory((h) => [
+        ...h,
+        { role: "user", content: `(ご家族が伝えたいこと:${heard})` },
+        { role: "assistant", content: data.say! },
+      ]);
+      reaskRef.current = 0;
+      setLastActivity(Date.now());
+      appendTrialLog({ at: new Date().toISOString(), heard, reply: data.say, reask: 0, relay: true });
+    },
+    [profile, entries, speaker],
+  );
+
   // マイクが閉じてから返事を作る(iOS では同時に使うと読み上げが鳴らないことがある)
   useEffect(() => {
     if (!pending || rec.listening) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPending(null);
+    if (relayMode) {
+      setRelayMode(false);
+      void relay(pending);
+      return;
+    }
     // 「あれ」「あの」で、登録した名前が出てこないときは写真で選んでもらう
     const vague =
       entries.length > 0 &&
@@ -243,10 +293,11 @@ export function Talk() {
       !entries.some((e) => e.name && pending.includes(e.name));
     if (vague) void startPick(pending);
     else void answer(pending);
-  }, [pending, rec.listening, answer, startPick, entries]);
+  }, [pending, rec.listening, answer, startPick, entries, relayMode, relay]);
 
-  const onButton = () => {
+  const onButton = (forFamily = false) => {
     speaker.unlock();
+    if (!rec.listening) setRelayMode(forFamily);
     if (rec.listening) {
       rec.stop();
     } else {
@@ -314,10 +365,13 @@ export function Talk() {
     });
   };
 
+  // 写真や「ご家族から」を出すときは、ほかを小さくして「はなす」が画面の外に出ないようにする
+  const crowded = !!pick || !!photoUrl || !!relayBig;
+
   const mood: RinMood = speaker.speaking ? "speaking" : rec.listening ? "listening" : "waiting";
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-4xl flex-col items-center justify-center gap-6 px-4 py-8">
+    <main className="mx-auto flex min-h-dvh w-full max-w-4xl flex-col items-center justify-center gap-4 px-4 py-6">
       <div className="flex w-full items-center justify-center gap-6">
         <div
           onPointerDown={holdStart}
@@ -327,17 +381,23 @@ export function Talk() {
           onContextMenu={(e) => e.preventDefault()}
           className="touch-none select-none [-webkit-touch-callout:none]"
         >
-          <Rin mood={mood} size={pick ? 160 : photoUrl ? 200 : 340} />
+          <Rin mood={mood} size={crowded ? 150 : 340} />
         </div>
         {photoUrl && !pick && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={photoUrl}
             alt={shown?.name ?? ""}
-            className="max-h-[45dvh] max-w-[60%] rounded-3xl object-contain shadow-lg"
+            className={`${relayBig ? "max-h-[24dvh]" : "max-h-[36dvh]"} max-w-[60%] rounded-3xl object-contain shadow-lg`}
           />
         )}
       </div>
+      {relayBig && !pick && !rec.listening && !thinking && (
+        <div className="w-full max-w-2xl rounded-3xl border-4 border-sky-200 bg-sky-50 p-4 text-center">
+          <p className="text-2xl text-sky-800">ご家族から</p>
+          <p className="text-5xl font-bold leading-snug">{relayBig}</p>
+        </div>
+      )}
       {rinPrompt && !pick && !rec.listening && !thinking && !speaker.speaking && (
         <RinPromptCard prompt={rinPrompt} onTap={() => tapRinPrompt(rinPrompt)} />
       )}
@@ -357,21 +417,38 @@ export function Talk() {
       ) : (
         <>
           <p
-            className={`min-h-[4em] text-center font-bold leading-relaxed ${bigText ? "text-6xl" : "text-4xl"}`}
+            className={`text-center font-bold leading-relaxed ${
+              bigText ? "text-6xl" : relayBig ? "text-3xl" : crowded ? "text-4xl" : "min-h-[4em] text-4xl"
+            }`}
             aria-live="polite"
           >
-            {rec.listening ? rec.interim || "どうぞ、お話しください。" : thinking ? "……" : reply}
+            {rec.listening
+              ? rec.interim || (relayMode ? "ご家族の方、伝えたいことをどうぞ。" : "どうぞ、お話しください。")
+              : thinking
+                ? "……"
+                : reply}
           </p>
           <button
             type="button"
-            onClick={onButton}
+            onClick={() => onButton(false)}
             disabled={thinking}
-            className={`h-32 w-full max-w-md rounded-full text-5xl font-bold text-white shadow-lg active:scale-95 disabled:opacity-50 ${
+            className={`${crowded ? "h-24" : "h-32"} w-full max-w-md rounded-full text-5xl font-bold text-white shadow-lg active:scale-95 disabled:opacity-50 ${
               rec.listening ? "bg-rose-500" : "bg-amber-600"
             }`}
           >
             {rec.listening ? "とめる" : "はなす"}
           </button>
+          {/* 家族がそばで話すとき用。本人の「はなす」より控えめにする */}
+          {!rec.listening && (
+            <button
+              type="button"
+              onClick={() => onButton(true)}
+              disabled={thinking}
+              className="rounded-full bg-sky-100 px-8 py-4 text-2xl text-sky-900 active:scale-95 disabled:opacity-50"
+            >
+              ご家族が伝える
+            </button>
+          )}
         </>
       )}
       <StandaloneWarning />

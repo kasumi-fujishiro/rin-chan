@@ -15,6 +15,8 @@ export type TrialEntry = {
   prompt?: string;
   // その話しかけへの本人の反応のとき、どのきっかけへの反応か
   reactionTo?: string;
+  // 家族の言葉をリンちゃんが言い直して伝えたとき(heard は家族の言葉、reply は伝えた言葉)
+  relay?: boolean;
 };
 
 // 付き添いの家族が書くメモ

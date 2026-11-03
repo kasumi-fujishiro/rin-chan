@@ -54,9 +54,10 @@ export function TrialLogView() {
           e.pick ? `【写真で選ぶ:${pickText(e.pick)}】` : "",
           e.prompt ? `【リンちゃんから:${e.prompt}】` : "",
           e.reactionTo ? `【${e.reactionTo}への反応】` : "",
+          e.relay ? "【ご家族の言葉を伝えた】" : "",
           e.understood === true ? "【伝わった】" : e.understood === false ? "【伝わらなかった】" : "",
         ].join("");
-        return `${time(e.at)}${tags}\n本人:${e.heard}\nリンちゃん:${e.reply}`;
+        return `${time(e.at)}${tags}\n${e.relay ? "ご家族" : "本人"}:${e.heard}\nリンちゃん:${e.reply}`;
       })
       .join("\n\n");
 
@@ -166,8 +167,11 @@ export function TrialLogView() {
                 {r.entry.reactionTo && (
                   <span className="ml-2 font-bold text-sky-700">{r.entry.reactionTo}への反応</span>
                 )}
+                {r.entry.relay && <span className="ml-2 font-bold text-sky-700">ご家族の言葉を伝えた</span>}
               </p>
-              <p>本人:{r.entry.heard}</p>
+              <p>
+                {r.entry.relay ? "ご家族" : "本人"}:{r.entry.heard}
+              </p>
               <p>リンちゃん:{r.entry.reply}</p>
               {!r.entry.pick && !r.entry.prompt && (
                 <div className="mt-2 flex gap-2">
