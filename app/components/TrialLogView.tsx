@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ReportPanel } from "./ReportPanel";
 import { useEffect, useState } from "react";
 import {
   addTrialMemo,
@@ -38,7 +39,9 @@ export function TrialLogView() {
   const rows: Row[] = [
     ...log.map((entry) => ({ type: "talk" as const, entry })),
     ...memos.map((m) => ({ type: "memo" as const, memo: m })),
-  ].sort((a, b) => (a.type === "talk" ? a.entry.at : a.memo.at) < (b.type === "talk" ? b.entry.at : b.memo.at) ? 1 : -1);
+  ].sort((a, b) =>
+    (a.type === "talk" ? a.entry.at : a.memo.at) < (b.type === "talk" ? b.entry.at : b.memo.at) ? 1 : -1,
+  );
 
   const asText = () =>
     [...rows]
@@ -78,12 +81,16 @@ export function TrialLogView() {
 
       <div className="grid gap-1 rounded-2xl bg-white p-4 text-xl shadow">
         <p>
-          会話 {talks.length} 回 / そのうち聞き返し {reaskCount} 回 / 写真で選ぶ {picks.length} 回(選べた {picked} 回)
+          会話 {talks.length} 回 / そのうち聞き返し {reaskCount} 回 / 写真で選ぶ {picks.length} 回(選べた{" "}
+          {picked} 回)
         </p>
         <p>
-          伝わった {ok.length} 回(言い直しなし {okByStage[0]}・1回目 {okByStage[1]}・2回目 {okByStage[2]}) / 伝わらなかった {ng} 回
+          伝わった {ok.length} 回(言い直しなし {okByStage[0]}・1回目 {okByStage[1]}・2回目 {okByStage[2]}) /
+          伝わらなかった {ng} 回
         </p>
       </div>
+
+      <ReportPanel log={log} memos={memos} />
 
       <div className="flex flex-col gap-3 rounded-2xl bg-amber-50 p-4">
         <label htmlFor="memo" className="text-xl font-bold">
@@ -147,10 +154,18 @@ export function TrialLogView() {
             <li key={`t-${r.entry.at}`} className="rounded-2xl bg-white p-4 text-lg shadow">
               <p className="text-zinc-500">
                 {time(r.entry.at)}
-                {r.entry.reask > 0 && <span className="ml-2 font-bold text-rose-700">{REASK_LABEL[r.entry.reask]}</span>}
-                {r.entry.pick && <span className="ml-2 font-bold text-emerald-700">写真で選ぶ:{pickText(r.entry.pick)}</span>}
-                {r.entry.prompt && <span className="ml-2 font-bold text-sky-700">リンちゃんから:{r.entry.prompt}</span>}
-                {r.entry.reactionTo && <span className="ml-2 font-bold text-sky-700">{r.entry.reactionTo}への反応</span>}
+                {r.entry.reask > 0 && (
+                  <span className="ml-2 font-bold text-rose-700">{REASK_LABEL[r.entry.reask]}</span>
+                )}
+                {r.entry.pick && (
+                  <span className="ml-2 font-bold text-emerald-700">写真で選ぶ:{pickText(r.entry.pick)}</span>
+                )}
+                {r.entry.prompt && (
+                  <span className="ml-2 font-bold text-sky-700">リンちゃんから:{r.entry.prompt}</span>
+                )}
+                {r.entry.reactionTo && (
+                  <span className="ml-2 font-bold text-sky-700">{r.entry.reactionTo}への反応</span>
+                )}
               </p>
               <p>本人:{r.entry.heard}</p>
               <p>リンちゃん:{r.entry.reply}</p>

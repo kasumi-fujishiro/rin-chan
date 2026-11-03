@@ -27,6 +27,7 @@ Built with Claude: Japan 2026 の作品です。
 | **家族の登録(`/family`、PIN つき)** | 呼び名、本人の言い方の辞書、物・人・場所の写真と説明、思い出の話題、デイサービスの日、声の伝言、バックアップ |
 | **言葉の辞書の候補** | 「言った言葉 → 写真で選んだもの」の記録から、本人独特の言い方(例:ズック=運動靴)や言葉の取り違え(例:熱いのに「冷たい」)を Claude が見つけ、家族が確認して辞書に足す |
 | **試用の記録(`/log`)** | 会話、聞き返しの回数、写真で選べたか、話しかけへの反応。家族が「伝わった/伝わらなかった」の印とメモを付けられる |
+| **家族への報告(LINE)** | 今日の記録を Claude がまとめ、「本人が話したこと」と「記録で確かめられたこと」を分けて書く。家族が読んで直してから LINE に送る |
 | **音声の確認(`/check`)** | iPad の Safari で音声認識と読み上げが動くか、止まるときの原因の記録 |
 
 ## Claude の使い方
@@ -36,6 +37,7 @@ Built with Claude: Japan 2026 の作品です。
 | 本人との会話 | `/api/talk` | `claude-haiku-5-5` | 返事の速さを優先(1秒前後)。訂正しない・推測しない・診断しない・同じ質問に同じ調子で答える、をシステムプロンプトで徹底。時刻と聞き返しの段階は会話の末尾の system メッセージで渡す |
 | 「あれ」の推測 | `/api/guess` | `claude-haiku-5-5` | Structured Outputs(zod)で「種類」と「候補の名前」だけを返させ、登録にない名前は捨てる |
 | 言葉の辞書の候補 | `/api/dictionary` | `claude-sonnet-5-5` | 記録の読み解きは Sonnet。Structured Outputs で根拠つきの候補を返し、断られたときはサーバー側のフォールバック(`fallbacks: "default"`)でやり直す |
+| 家族への報告 | `/api/report` | `claude-sonnet-5-5` | 本人の話と記録上の事実を分けて要約。診断・評価・助言は書かない。送るのは家族が確認した文だけ |
 
 ### 返事の質のテスト
 
@@ -68,6 +70,7 @@ flowchart LR
 ```
 
 - 写真・声の伝言・試用の記録は iPad の中だけ。写真は Claude に送らない
+- LINE への報告は、家族が内容を確認して「送る」を押したときだけ送り、サーバーには残さない
 - サーバーは受け取った文字を Claude に渡すだけで、何も保存しない。API キーは wrangler の secret
 - バックアップは1つのファイルに書き出し、家族が自分の端末に保存する
 - リポジトリには架空のサンプル(`samples/`)とイラストだけを置く
@@ -88,6 +91,12 @@ npm run deploy
 ```
 
 - API キーは `.env*` ではなく `.dev.vars` に置きます(OpenNext は `.env*` をビルドに含めるため)
+- LINE に報告を送るときは、LINE Developers で Messaging API のチャネルを作り、次の2つを secret に入れます(入れていなければ、報告は画面でコピーするだけになります)
+
+```bash
+npx wrangler secret put LINE_CHANNEL_ACCESS_TOKEN   # チャネルアクセストークン(長期)
+npx wrangler secret put LINE_TO                     # 送り先のユーザー ID(U から始まる)
+```
 - 家族の登録がないときは `samples/profile.json` の架空のデータで答えます
 
 ## iPad で使うときの注意
@@ -109,6 +118,7 @@ app/
   api/talk            会話(Haiku)
   api/guess           「あれ」の推測(Haiku + Structured Outputs)
   api/dictionary      言葉の辞書の候補(Sonnet + Structured Outputs)
+  api/report          家族への報告(Sonnet)と LINE への送信
   lib/prompt.ts       リンちゃんの話し方(システムプロンプト)
   lib/familyStore.ts  iPad の中の保存とバックアップ
 samples/profile.json  公開用の架空データ
