@@ -19,6 +19,7 @@ import {
 } from "../lib/familyStore";
 import { KINDS, type Kind } from "../lib/types";
 import { usePhotoUrl } from "../lib/usePhotoUrl";
+import { DictionarySuggestions } from "./DictionarySuggestions";
 import { MessageRecorder } from "./MessageRecorder";
 
 const KIND_HINT: Record<Kind, string> = {
@@ -110,6 +111,16 @@ export function FamilyEditor() {
           {saved ? "保存しました" : "呼び方を保存"}
         </button>
       </section>
+
+      <DictionarySuggestions
+        settings={settings}
+        entries={entries}
+        onAdd={async (word) => {
+          const next = { ...settings, words: [...settings.words.filter((w) => w.say !== word.say), word] };
+          await saveSettings(next);
+          setSettings(next);
+        }}
+      />
 
       <section className={card}>
         <h2 className="text-2xl font-bold">家の説明書</h2>
