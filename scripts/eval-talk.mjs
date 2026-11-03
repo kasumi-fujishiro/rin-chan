@@ -14,7 +14,9 @@ async function talk(turns, reask = 0) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ messages, reask, profile }),
   });
-  return (await res.json()).reply ?? "";
+  const data = await res.json();
+  // テレビなどの声として返事をしなかったときは、印の文字を返す
+  return data.ignored ? "(返事なし)" : (data.reply ?? "");
 }
 
 async function guess(heard) {
@@ -55,7 +57,12 @@ const cases = [
   {
     name: "本人の言い方を理解する",
     run: () => talk(["ズックはどこにある?"]),
-    checks: [["運動靴として受け取る(場所は登録にないので家族に聞く)", (r) => /ズック|運動靴/.test(r) && r.includes(family)]],
+    checks: [
+      [
+        "運動靴として受け取る(場所は登録にないので家族に聞く)",
+        (r) => /ズック|運動靴/.test(r) && r.includes(family),
+      ],
+    ],
   },
   {
     name: "勘違いを訂正しない",
@@ -80,7 +87,13 @@ const cases = [
     name: "聞き返し2回目は一言",
     run: () =>
       talk(
-        ["眼鏡はどこ", "眼鏡は、居間のテーブルの青いケースに入っていますよ。", "え?", "眼鏡は、居間です。青いケースです。", "なに?"],
+        [
+          "眼鏡はどこ",
+          "眼鏡は、居間のテーブルの青いケースに入っていますよ。",
+          "え?",
+          "眼鏡は、居間です。青いケースです。",
+          "なに?",
+        ],
         2,
       ),
     checks: [
@@ -95,10 +108,39 @@ const cases = [
   },
   {
     name: "思い出の話を訂正しない",
-    run: () => talk(["(リンちゃんから話しかけました)", "文房具屋さんの仕事のお話、聞かせてくれませんか。", "学校の前のお店で働いてたのよ"]),
+    run: () =>
+      talk([
+        "(リンちゃんから話しかけました)",
+        "文房具屋さんの仕事のお話、聞かせてくれませんか。",
+        "学校の前のお店で働いてたのよ",
+      ]),
     checks: [["駅前だと直さない", (r) => !/駅前/.test(r)]],
   },
 ];
+
+// テレビの音は返事をせず、本人の短い言葉には返事をする
+cases.push(
+  {
+    name: "テレビの天気予報には返事をしない",
+    run: () => talk(["続いては関東地方の天気です。明日は朝から晴れ間が広がり、最高気温は二十度の予想です"]),
+    checks: [["返事なし", (r) => r === "(返事なし)"]],
+  },
+  {
+    name: "テレビの通販には返事をしない",
+    run: () => talk(["今ならこちらの商品、お値段そのままでもう一つお付けします。お電話はフリーダイヤルで"]),
+    checks: [["返事なし", (r) => r === "(返事なし)"]],
+  },
+  {
+    name: "本人の独り言には返事をする",
+    run: () => talk(["今日は寒いわね"]),
+    checks: [["返事あり", (r) => r !== "(返事なし)" && r.length > 0]],
+  },
+  {
+    name: "本人の言いかけには返事をする",
+    run: () => talk(["あれ、ほら、あれよ"]),
+    checks: [["返事あり", (r) => r !== "(返事なし)" && r.length > 0]],
+  },
+);
 
 const guessCases = [
   { heard: "あれどこいったっけ、新聞が読めないのよ", expect: "眼鏡" },
@@ -110,7 +152,11 @@ let pass = 0;
 let total = 0;
 for (const c of cases) {
   const reply = await c.run();
-  const results = [...c.checks, ...common].map(([label, fn]) => [label, fn(reply)]);
+  // 返事をしなかったときは、話し方の共通の決まりは見ない
+  const results = [...c.checks, ...(reply === "(返事なし)" ? [] : common)].map(([label, fn]) => [
+    label,
+    fn(reply),
+  ]);
   const ok = results.every(([, r]) => r);
   total++;
   if (ok) pass++;
@@ -122,7 +168,9 @@ for (const g of guessCases) {
   const ok = candidates.includes(g.expect);
   total++;
   if (ok) pass++;
-  console.log(`${ok ? "✓" : "✗"} 「あれ」の推測:${g.heard}\n   候補:${candidates.join("・") || "なし"}(期待:${g.expect})`);
+  console.log(
+    `${ok ? "✓" : "✗"} 「あれ」の推測:${g.heard}\n   候補:${candidates.join("・") || "なし"}(期待:${g.expect})`,
+  );
 }
 console.log(`\n${pass} / ${total} 通過`);
 process.exit(pass === total ? 0 : 1);

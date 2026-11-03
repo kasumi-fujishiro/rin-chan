@@ -17,6 +17,8 @@ export type TrialEntry = {
   reactionTo?: string;
   // 家族の言葉をリンちゃんが言い直して伝えたとき(heard は家族の言葉、reply は伝えた言葉)
   relay?: boolean;
+  // テレビや周りの声と判断して、返事をしなかったとき
+  ignored?: boolean;
 };
 
 // 付き添いの家族が書くメモ

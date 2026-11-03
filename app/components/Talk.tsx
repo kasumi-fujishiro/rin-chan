@@ -94,17 +94,35 @@ export function Talk() {
       const messages: Turn[] = [...history, { role: "user", content }];
       setThinking(true);
       let text: string;
+      let ignored = false;
       try {
         const res = await fetch("/api/talk", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ messages, reask, profile }),
         });
-        text = ((await res.json()) as { reply: string }).reply;
+        const data = (await res.json()) as { reply?: string; ignored?: boolean };
+        ignored = !!data.ignored;
+        text = data.reply ?? "";
       } catch {
         text = "ごめんなさい、いま、うまくつながりません。";
       }
       setThinking(false);
+
+      // テレビなどの声だったときは、しゃべらずに文字だけで知らせる(会話にも入れない)
+      if (ignored) {
+        reaskRef.current = Math.max(0, reask - 1);
+        setReply("テレビの音だったかもしれません。もう一度、押して話してくださいね。");
+        setBigText(false);
+        appendTrialLog({
+          at: new Date().toISOString(),
+          heard,
+          reply: "(テレビなどの声として返事をしなかった)",
+          reask,
+          ignored: true,
+        });
+        return;
+      }
 
       setHistory([...messages, { role: "assistant", content: text }]);
       setReply(text);
@@ -317,7 +335,17 @@ export function Talk() {
   // 家族用の入口:リンちゃんを2秒長押しすると登録画面へ(本人がふだん触らない場所)
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdStart = () => {
-    holdTimer.current = setTimeout(() => router.push("/family"), 2000);
+    held.current = false;
+    holdTimer.current = setTimeout(() => {
+      held.current = true;
+      router.push("/family");
+    }, 2000);
+  };
+  // リンちゃんを短く押したときは「はなす」と同じ(長押しは家族の入口)
+  const held = useRef(false);
+  const tapRin = () => {
+    if (held.current || pick || thinking || rec.listening) return;
+    onButton(false);
   };
   const holdEnd = () => {
     if (holdTimer.current) clearTimeout(holdTimer.current);
@@ -384,6 +412,7 @@ export function Talk() {
       <div className="flex w-full items-center justify-center gap-6">
         <div
           onPointerDown={holdStart}
+          onClick={tapRin}
           onPointerUp={holdEnd}
           onPointerLeave={holdEnd}
           onPointerCancel={holdEnd}

@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { resolveProfile } from "../../lib/profile";
-import { buildSystemPrompt, REASK_INSTRUCTIONS, reaskEndMessage } from "../../lib/prompt";
+import { buildSystemPrompt, IGNORE_MARK, REASK_INSTRUCTIONS, reaskEndMessage } from "../../lib/prompt";
 
 // 返事の速さを優先して Haiku を使う(CLAUDE.md の技術構成)
 const MODEL = "claude-haiku-5-5";
@@ -57,6 +57,8 @@ export async function POST(request: Request) {
       .flatMap((b) => (b.type === "text" ? [b.text] : []))
       .join("")
       .trim();
+    // テレビや周りの声だったときは返事をしない(画面は「もう一度」とだけ出す)
+    if (reply.includes(IGNORE_MARK)) return Response.json({ ignored: true, stage: reask });
     return Response.json({ reply: reply || fallback, stage: reask });
   } catch (error) {
     if (error instanceof Anthropic.AuthenticationError) {
