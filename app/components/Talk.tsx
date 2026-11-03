@@ -25,6 +25,7 @@ import {
 } from "../lib/familyStore";
 import type { Kind, Profile } from "../lib/types";
 import { usePhotoUrl } from "../lib/usePhotoUrl";
+import { useWakeLock } from "../lib/useWakeLock";
 import { markRinPromptUsed, pickRinPrompt, type RinPrompt } from "../lib/rinPrompt";
 
 type Turn = Anthropic.MessageParam & { content: string };
@@ -39,6 +40,13 @@ function findMentioned(reply: string, entries: Entry[]): Entry | null {
       .filter((e) => (e.photo || e.spot) && e.name && reply.includes(e.name))
       .sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || b.name.length - a.name.length)[0] ?? null
   );
+}
+
+// 「11月4日(水) 午後3時20分」の形。24時間表記は朝か夕方か分かりにくいので使わない
+function formatClock(d: Date) {
+  const date = d.toLocaleDateString("ja-JP", { month: "long", day: "numeric", weekday: "short" });
+  const h = d.getHours();
+  return `${date} ${h < 12 ? "午前" : "午後"}${h % 12 || 12}時${d.getMinutes()}分`;
 }
 
 export function Talk() {
@@ -68,6 +76,7 @@ export function Talk() {
   // 直前の返事に対して、何回聞き返されたか
   const reaskRef = useRef(0);
   const speaker = useSpeaker();
+  useWakeLock();
 
   useEffect(() => {
     (async () => {
@@ -405,10 +414,24 @@ export function Talk() {
   const room = shown?.spot ? entries.find((e) => e.id === shown.spot!.roomId && e.photo) : undefined;
   const crowded = !!pick || !!photoUrl || !!room || !!relayBig;
 
+  // 待っている間は、今日の日付と時刻を出す(日にちが分かるように)
+  const clock = now ? formatClock(new Date(now)) : "";
+  const dayServiceToday = !!now && !!settings?.dayService?.weekdays.includes(new Date(now).getDay());
+
   const mood: RinMood = speaker.speaking ? "speaking" : rec.listening ? "listening" : "waiting";
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-4xl flex-col items-center justify-center gap-4 px-4 py-6">
+      {!crowded && !rec.listening && clock && (
+        <p className="text-center text-3xl text-zinc-600">
+          {clock}
+          {dayServiceToday && (
+            <span className="mt-1 block text-2xl">
+              今日は{settings?.dayService?.placeName || "デイサービス"}の日です
+            </span>
+          )}
+        </p>
+      )}
       <div className="flex w-full items-center justify-center gap-6">
         <div
           onPointerDown={holdStart}
@@ -419,7 +442,7 @@ export function Talk() {
           onContextMenu={(e) => e.preventDefault()}
           className="touch-none select-none [-webkit-touch-callout:none]"
         >
-          <Rin mood={mood} size={crowded ? 150 : 340} />
+          <Rin mood={mood} size={crowded ? 150 : 290} />
         </div>
         {room?.photo && shown?.spot && !pick ? (
           <div className="relative">
@@ -476,7 +499,7 @@ export function Talk() {
         <>
           <p
             className={`text-center font-bold leading-relaxed ${
-              bigText ? "text-6xl" : relayBig ? "text-3xl" : crowded ? "text-4xl" : "min-h-[4em] text-4xl"
+              bigText ? "text-6xl" : relayBig ? "text-3xl" : crowded ? "text-4xl" : "min-h-[3em] text-4xl"
             }`}
             aria-live="polite"
           >
