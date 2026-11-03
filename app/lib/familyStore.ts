@@ -1,6 +1,6 @@
 "use client";
 
-import { KINDS, type Kind, type Profile, type Word } from "./types";
+import { KINDS, type Kind, type Memory, type Profile, type Word } from "./types";
 
 // 家族が登録した情報は、この iPad の IndexedDB にだけ保存する(サーバーには置かない)
 export type Settings = {
@@ -8,6 +8,19 @@ export type Settings = {
   userCallName: string;
   familyCallName: string;
   words: Word[];
+  // 後から足した項目なので、古い保存データにはない
+  memories?: Memory[];
+  dayService?: DayService;
+};
+
+// デイサービスの日。帰ってきたころにリンちゃんから声をかける
+export type DayService = {
+  // 0 が日曜
+  weekdays: number[];
+  // "16:00" の形
+  returnTime: string;
+  // 「場所」に登録した名前と同じなら、その写真を見せる
+  placeName: string;
 };
 
 export type Entry = {
@@ -122,6 +135,7 @@ export function toProfile(settings: Settings | null, entries: Entry[]): Profile 
     familyCallName: s.familyCallName || DEFAULT_SETTINGS.familyCallName,
     words: s.words.filter((w) => w.say && w.means),
     manual: entries.map(({ kind, name, note }) => ({ kind, name, note })),
+    memories: (s.memories ?? []).filter((m) => m.title),
   };
 }
 

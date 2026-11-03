@@ -11,6 +11,10 @@ export type TrialEntry = {
   pick?: { kind: string; candidates: string[]; chosen: string | null };
   // 付き添いの家族があとから付ける印。リンちゃんの返事が本人に伝わったか
   understood?: boolean;
+  // リンちゃんから話しかけたとき、そのきっかけ(例:デイサービスの声かけ、思い出「朝顔」)
+  prompt?: string;
+  // その話しかけへの本人の反応のとき、どのきっかけへの反応か
+  reactionTo?: string;
 };
 
 // 付き添いの家族が書くメモ

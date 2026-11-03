@@ -98,7 +98,11 @@ export function DictionarySuggestions({
                   辞書に足す
                 </button>
               )}
-              <button type="button" className="rounded-xl bg-zinc-200 px-4 py-2 text-lg" onClick={() => remove(s)}>
+              <button
+                type="button"
+                className="rounded-xl bg-zinc-200 px-4 py-2 text-lg"
+                onClick={() => remove(s)}
+              >
                 {s.type === "言い方" ? "足さない" : "わかった"}
               </button>
             </div>

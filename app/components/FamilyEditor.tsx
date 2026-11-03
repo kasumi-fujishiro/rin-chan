@@ -20,6 +20,7 @@ import {
 import { KINDS, type Kind } from "../lib/types";
 import { usePhotoUrl } from "../lib/usePhotoUrl";
 import { DictionarySuggestions } from "./DictionarySuggestions";
+import { MemoriesEditor } from "./MemoriesEditor";
 import { MessageRecorder } from "./MessageRecorder";
 
 const KIND_HINT: Record<Kind, string> = {
@@ -40,11 +41,13 @@ export function FamilyEditor() {
   const [persisted, setPersisted] = useState<boolean | null>(null);
   // バックアップから戻したら、伝言の一覧も読み直す
   const [restored, setRestored] = useState(0);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     (async () => {
       setSettings((await getSettings()) ?? DEFAULT_SETTINGS);
       setEntries(await listEntries());
+      setLoaded(true);
       setPersisted(await requestPersist());
     })();
   }, []);
@@ -150,6 +153,18 @@ export function FamilyEditor() {
           {shown.length === 0 && <p className="text-lg text-zinc-500">まだありません。{KIND_HINT[kind]}</p>}
         </ul>
       </section>
+
+      <MemoriesEditor
+        key={`memories-${restored}-${loaded}`}
+        settings={settings}
+        entries={entries}
+        onSave={async (patch) => {
+          // 呼び方の欄で編集中のものは保存しない(保存済みの内容に足す)
+          const next = { ...((await getSettings()) ?? DEFAULT_SETTINGS), ...patch };
+          await saveSettings(next);
+          setSettings((s) => ({ ...s, ...patch }));
+        }}
+      />
 
       <MessageRecorder
         key={restored}

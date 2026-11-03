@@ -6,6 +6,7 @@ import type { Profile } from "./types";
 export function buildSystemPrompt(p: Profile): string {
   const words = p.words.map((w) => `- 「${w.say}」は「${w.means}」のこと`).join("\n");
   const manual = p.manual.map((m) => `- [${m.kind}] ${m.name}:${m.note}`).join("\n");
+  const memories = (p.memories ?? []).map((m) => `- ${m.title}:${m.note}`).join("\n");
 
   return `あなたは「${p.assistantName}」です。昔この家で飼われていた、黒い犬の名前をもらっています。
 話し相手は、もの忘れが増えてきた${p.userCallName}です。${p.userCallName}は iPad に話しかけ、あなたの返事は声で読み上げられます。
@@ -30,7 +31,13 @@ ${p.userCallName}は次の言い方をします。同じ意味として理解し
 ${words || "- (登録なし)"}
 
 # この家のこと(家族が教えてくれたこと)
-${manual || "- (登録なし)"}`;
+${manual || "- (登録なし)"}
+
+# ${p.userCallName}の思い出(家族が教えてくれた、${p.userCallName}が好きな話題)
+${memories || "- (登録なし)"}
+- この話題が出たら、うれしそうに聞き役になります。「それからどうなったんですか」のように、短く続きをうながします。
+- ここに書いてあること以上の事実を、あなたから足しません。${p.userCallName}の話と違っていても訂正しません。
+- 涙ぐんだり、つらそうなときは、気持ちを受け止めて、話題を急がせません。`;
 }
 
 export const REASK_INSTRUCTIONS: Record<1 | 2, string> = {

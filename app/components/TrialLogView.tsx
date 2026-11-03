@@ -49,13 +49,15 @@ export function TrialLogView() {
         const tags = [
           e.reask ? `【${REASK_LABEL[e.reask]}】` : "",
           e.pick ? `【写真で選ぶ:${pickText(e.pick)}】` : "",
+          e.prompt ? `【リンちゃんから:${e.prompt}】` : "",
+          e.reactionTo ? `【${e.reactionTo}への反応】` : "",
           e.understood === true ? "【伝わった】" : e.understood === false ? "【伝わらなかった】" : "",
         ].join("");
         return `${time(e.at)}${tags}\n本人:${e.heard}\nリンちゃん:${e.reply}`;
       })
       .join("\n\n");
 
-  const talks = log.filter((e) => !e.pick);
+  const talks = log.filter((e) => !e.pick && !e.prompt);
   const picks = log.filter((e) => e.pick);
   const picked = picks.filter((e) => e.pick?.chosen).length;
   const reaskCount = talks.filter((e) => e.reask > 0).length;
@@ -147,10 +149,12 @@ export function TrialLogView() {
                 {time(r.entry.at)}
                 {r.entry.reask > 0 && <span className="ml-2 font-bold text-rose-700">{REASK_LABEL[r.entry.reask]}</span>}
                 {r.entry.pick && <span className="ml-2 font-bold text-emerald-700">写真で選ぶ:{pickText(r.entry.pick)}</span>}
+                {r.entry.prompt && <span className="ml-2 font-bold text-sky-700">リンちゃんから:{r.entry.prompt}</span>}
+                {r.entry.reactionTo && <span className="ml-2 font-bold text-sky-700">{r.entry.reactionTo}への反応</span>}
               </p>
               <p>本人:{r.entry.heard}</p>
               <p>リンちゃん:{r.entry.reply}</p>
-              {!r.entry.pick && (
+              {!r.entry.pick && !r.entry.prompt && (
                 <div className="mt-2 flex gap-2">
                   {([true, false] as const).map((value) => (
                     <button

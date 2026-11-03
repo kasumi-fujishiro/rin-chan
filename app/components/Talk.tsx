@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type Anthropic from "@anthropic-ai/sdk";
 import { MessageCard } from "./MessageCard";
+import { RinPromptCard } from "./RinPromptCard";
 import { PhotoPicker, type PickState } from "./PhotoPicker";
 import { StandaloneWarning } from "./StandaloneWarning";
 import { Rin, type RinMood } from "./Rin";
@@ -19,9 +20,11 @@ import {
   toProfile,
   type Entry,
   type Message,
+  type Settings,
 } from "../lib/familyStore";
 import type { Kind, Profile } from "../lib/types";
 import { usePhotoUrl } from "../lib/usePhotoUrl";
+import { markRinPromptUsed, pickRinPrompt, type RinPrompt } from "../lib/rinPrompt";
 
 type Turn = Anthropic.MessageParam & { content: string };
 
@@ -47,6 +50,12 @@ export function Talk() {
   const [pick, setPick] = useState<PickState | null>(null);
   const [pickBusy, setPickBusy] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [settings, setSettings] = useState<Settings | null>(null);
+  // リンちゃんからの話しかけを出すかの判断に使う(最後に話した時刻と、30秒ごとの時計)
+  const [lastActivity, setLastActivity] = useState(0);
+  const [now, setNow] = useState(0);
+  // 直前にリンちゃんから話しかけたきっかけ。次の本人の言葉を「その反応」として記録する
+  const promptRef = useRef<string | null>(null);
   const photoUrl = usePhotoUrl(shown?.photo);
   // 直前の返事に対して、何回聞き返されたか
   const reaskRef = useRef(0);
@@ -57,6 +66,7 @@ export function Talk() {
       const [settings, list, msgs] = await Promise.all([getSettings(), listEntries(), listMessages()]);
       setEntries(list);
       setMessages(msgs);
+      setSettings(settings);
       setProfile(toProfile(settings, list));
       void requestPersist();
     })();
@@ -100,7 +110,10 @@ export function Talk() {
         heard,
         reply: text,
         reask,
+        reactionTo: promptRef.current ?? undefined,
       });
+      promptRef.current = null;
+      setLastActivity(Date.now());
     },
     [history, speaker, profile, entries],
   );
@@ -266,6 +279,41 @@ export function Talk() {
     });
   };
 
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    tick();
+    const id = setInterval(tick, 30_000);
+    return () => clearInterval(id);
+  }, []);
+  // まだ話していないか、2分以上会話がないときだけ、思い出の話題を出す
+  const idle = history.length === 0 || now - lastActivity > 120_000;
+  const rinPrompt = now ? pickRinPrompt(settings, entries, new Date(now), idle) : null;
+
+  const tapRinPrompt = (prompt: RinPrompt) => {
+    rec.stop();
+    speaker.unlock();
+    speaker.speak(prompt.text, { rate: 0.8 });
+    setReply(prompt.text);
+    setBigText(false);
+    setShown(prompt.entry?.photo ? prompt.entry : null);
+    // Claude には「リンちゃんから話しかけた」流れとして渡す(会話の最初は本人の番である必要があるため)
+    setHistory((h) => [
+      ...h,
+      { role: "user", content: "(リンちゃんから話しかけました)" },
+      { role: "assistant", content: prompt.text },
+    ]);
+    promptRef.current = prompt.label;
+    markRinPromptUsed(prompt, new Date());
+    setLastActivity(Date.now());
+    appendTrialLog({
+      at: new Date().toISOString(),
+      heard: "(リンちゃんから話しかけた)",
+      reply: prompt.text,
+      reask: 0,
+      prompt: prompt.label,
+    });
+  };
+
   const mood: RinMood = speaker.speaking ? "speaking" : rec.listening ? "listening" : "waiting";
 
   return (
@@ -290,6 +338,9 @@ export function Talk() {
           />
         )}
       </div>
+      {rinPrompt && !pick && !rec.listening && !thinking && !speaker.speaking && (
+        <RinPromptCard prompt={rinPrompt} onTap={() => tapRinPrompt(rinPrompt)} />
+      )}
       {message && !pick && !rec.listening && !thinking && (
         <MessageCard
           message={message}

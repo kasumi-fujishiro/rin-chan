@@ -24,6 +24,10 @@ export function resolveProfile(input: unknown): { profile: Profile; source: "ipa
         .slice(0, 200)
         .filter((m) => KINDS.includes(m?.kind))
         .map((m) => ({ kind: m.kind, name: text(m.name, 40), note: text(m.note, 400) })),
+      memories: (Array.isArray(p.memories) ? p.memories : [])
+        .slice(0, 50)
+        .map((m) => ({ title: text(m?.title, 40), note: text(m?.note, 600) }))
+        .filter((m) => m.title),
     },
   };
 }

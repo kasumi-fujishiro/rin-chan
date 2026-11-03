@@ -6,6 +6,9 @@ export type Word = { say: string; means: string };
 
 export type ManualEntry = { kind: Kind; name: string; note: string };
 
+// 家族が教えてくれた、本人が好きな思い出の話題
+export type Memory = { title: string; note: string };
+
 // Claude に送る形(写真は入れない)
 export type Profile = {
   assistantName: string;
@@ -13,4 +16,5 @@ export type Profile = {
   familyCallName: string;
   words: Word[];
   manual: ManualEntry[];
+  memories?: Memory[];
 };
