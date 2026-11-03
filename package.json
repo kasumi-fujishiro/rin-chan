@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview"
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "eval": "node scripts/eval-talk.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",
