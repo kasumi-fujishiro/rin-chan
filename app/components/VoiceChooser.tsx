@@ -122,20 +122,13 @@ export function VoiceChooser({
         </button>
       </div>
 
-      <details className="rounded-2xl bg-sky-50 p-4 text-lg">
-        <summary className="cursor-pointer font-bold">iPad に声を増やすには</summary>
-        <ol className="mt-2 list-decimal space-y-1 pl-6">
-          <li>iPad の「設定」→「アクセシビリティ」→「読み上げコンテンツ」→「声」→「日本語」を開く</li>
-          <li>
-            「Kyoko(拡張)」「Otoya(拡張)」など、名前に「拡張」や「高品質」がある声を選んでダウンロードする(数百MBあるので
-            Wi-Fi で)
-          </li>
-          <li>
-            ダウンロードが終わったら、Safari でこのページを再読み込みする。一覧に増えた声を試してください
-          </li>
-        </ol>
-        <p className="mt-2 text-base text-zinc-600">Siri の声は、Safari からは使えないことがあります。</p>
-      </details>
+      {voices.length <= 1 && (
+        // iPad の Safari は、設定でダウンロードした声を Web ページに見せない(2026-11-04 に確認)
+        <p className="rounded-2xl bg-sky-50 p-4 text-lg">
+          この iPad の Safari で使える日本語の声は1種類だけです(iPad の設定で声をダウンロードしても、Safari
+          からは使えません)。速さと高さを変えて、いちばん聞き取りやすいところを探してください。
+        </p>
+      )}
     </section>
   );
 }
