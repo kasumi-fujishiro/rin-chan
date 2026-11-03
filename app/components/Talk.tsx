@@ -4,12 +4,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type Anthropic from "@anthropic-ai/sdk";
+import { MessageCard } from "./MessageCard";
 import { PhotoPicker, type PickState } from "./PhotoPicker";
 import { StandaloneWarning } from "./StandaloneWarning";
 import { Rin, type RinMood } from "./Rin";
 import { useRecognition, useSpeaker } from "../lib/speech";
 import { appendTrialLog, isReask, isVague } from "../lib/trialLog";
-import { getSettings, listEntries, requestPersist, toProfile, type Entry } from "../lib/familyStore";
+import {
+  getSettings,
+  listEntries,
+  listMessages,
+  putMessage,
+  requestPersist,
+  toProfile,
+  type Entry,
+  type Message,
+} from "../lib/familyStore";
 import type { Kind, Profile } from "../lib/types";
 import { usePhotoUrl } from "../lib/usePhotoUrl";
 
@@ -36,6 +46,7 @@ export function Talk() {
   const [shown, setShown] = useState<Entry | null>(null);
   const [pick, setPick] = useState<PickState | null>(null);
   const [pickBusy, setPickBusy] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
   const photoUrl = usePhotoUrl(shown?.photo);
   // 直前の返事に対して、何回聞き返されたか
   const reaskRef = useRef(0);
@@ -43,8 +54,9 @@ export function Talk() {
 
   useEffect(() => {
     (async () => {
-      const [settings, list] = await Promise.all([getSettings(), listEntries()]);
+      const [settings, list, msgs] = await Promise.all([getSettings(), listEntries(), listMessages()]);
       setEntries(list);
+      setMessages(msgs);
       setProfile(toProfile(settings, list));
       void requestPersist();
     })();
@@ -240,6 +252,20 @@ export function Talk() {
     if (holdTimer.current) clearTimeout(holdTimer.current);
   };
 
+  // 伝言は、まだ聞いていない新しいものを先に出す
+  const message = messages.find((m) => !m.heardAt) ?? messages[0];
+  const heardMessage = async (m: Message) => {
+    const updated = { ...m, heardAt: Date.now() };
+    await putMessage(updated);
+    setMessages((list) => list.map((x) => (x.id === m.id ? updated : x)));
+    appendTrialLog({
+      at: new Date().toISOString(),
+      heard: "(伝言を押した)",
+      reply: `${m.from}からの伝言を聞いた`,
+      reask: 0,
+    });
+  };
+
   const mood: RinMood = speaker.speaking ? "speaking" : rec.listening ? "listening" : "waiting";
 
   return (
@@ -264,14 +290,19 @@ export function Talk() {
           />
         )}
       </div>
-      {pick ? (
-        <PhotoPicker
-          pick={pick}
-          busy={pickBusy}
-          onKind={chooseKind}
-          onChoose={closePick}
-          onNone={notThis}
+      {message && !pick && !rec.listening && !thinking && (
+        <MessageCard
+          message={message}
+          person={entries.find((e) => e.kind === "人" && e.name === message.from)}
+          onPlay={() => {
+            rec.stop();
+            speaker.cancel();
+          }}
+          onHeard={() => void heardMessage(message)}
         />
+      )}
+      {pick ? (
+        <PhotoPicker pick={pick} busy={pickBusy} onKind={chooseKind} onChoose={closePick} onNone={notThis} />
       ) : (
         <>
           <p

@@ -19,6 +19,7 @@ import {
 } from "../lib/familyStore";
 import { KINDS, type Kind } from "../lib/types";
 import { usePhotoUrl } from "../lib/usePhotoUrl";
+import { MessageRecorder } from "./MessageRecorder";
 
 const KIND_HINT: Record<Kind, string> = {
   物: "例:眼鏡、電子レンジ、給湯器",
@@ -36,6 +37,8 @@ export function FamilyEditor() {
   const [editing, setEditing] = useState<Entry | null>(null);
   const [saved, setSaved] = useState(false);
   const [persisted, setPersisted] = useState<boolean | null>(null);
+  // バックアップから戻したら、伝言の一覧も読み直す
+  const [restored, setRestored] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -137,11 +140,16 @@ export function FamilyEditor() {
         </ul>
       </section>
 
+      <MessageRecorder
+        key={restored}
+        defaultFrom={settings.familyCallName === DEFAULT_SETTINGS.familyCallName ? "" : settings.familyCallName} />
+
       <Backup
         onImported={async () => {
           setSettings((await getSettings()) ?? DEFAULT_SETTINGS);
           setEntries(await listEntries());
           setEditing(null);
+          setRestored((n) => n + 1);
         }}
       />
     </main>
@@ -198,9 +206,9 @@ function Backup({ onImported }: { onImported: () => Promise<void> }) {
             if (!picked) return;
             if (!confirm("今の登録をすべて、このバックアップの内容に置き換えます。よろしいですか?")) return;
             try {
-              const { entries } = await importBackup(picked);
+              const { entries, messages } = await importBackup(picked);
               await onImported();
-              setMessage(`戻しました(${entries} 件)`);
+              setMessage(`戻しました(登録 ${entries} 件、伝言 ${messages} 件)`);
             } catch (err) {
               setMessage(err instanceof Error ? err.message : "戻せませんでした");
             }

@@ -19,6 +19,16 @@ export type Entry = {
   updatedAt: number;
 };
 
+// 家族からの伝言(家族が自分の声で録音したもの)。リンちゃんの声とは分けて、本人が押したときだけ流す
+export type Message = {
+  id: string;
+  from: string;
+  audio: Blob;
+  createdAt: number;
+  // 本人が最後に聞いた時刻。まだなら undefined
+  heardAt?: number;
+};
+
 export const DEFAULT_SETTINGS: Settings = {
   assistantName: "リンちゃん",
   userCallName: "",
@@ -29,14 +39,17 @@ export const DEFAULT_SETTINGS: Settings = {
 const DB_NAME = "rin-family";
 const SETTINGS = "settings";
 const ENTRIES = "entries";
+const MESSAGES = "messages";
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
+    // v2 で伝言を足した。v1 のデータはそのまま残す
+    const req = indexedDB.open(DB_NAME, 2);
     req.onupgradeneeded = () => {
       const db = req.result;
-      db.createObjectStore(SETTINGS);
-      db.createObjectStore(ENTRIES, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(SETTINGS)) db.createObjectStore(SETTINGS);
+      if (!db.objectStoreNames.contains(ENTRIES)) db.createObjectStore(ENTRIES, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(MESSAGES)) db.createObjectStore(MESSAGES, { keyPath: "id" });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -75,6 +88,19 @@ export async function putEntry(entry: Entry) {
 
 export async function deleteEntry(id: string) {
   await run(ENTRIES, "readwrite", (s) => s.delete(id));
+}
+
+export async function listMessages(): Promise<Message[]> {
+  const all = await run<Message[]>(MESSAGES, "readonly", (s) => s.getAll());
+  return all.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export async function putMessage(message: Message) {
+  await run(MESSAGES, "readwrite", (s) => s.put(message));
+}
+
+export async function deleteMessage(id: string) {
+  await run(MESSAGES, "readwrite", (s) => s.delete(id));
 }
 
 // Safari は使われないサイトのデータを消すことがあるので、消さないように頼んでおく
@@ -124,12 +150,15 @@ export async function shrinkPhoto(file: File, maxSide = 1200): Promise<Blob> {
 const BACKUP_FORMAT = "rin-family-backup";
 
 type BackupEntry = Omit<Entry, "photo"> & { photo?: string };
+type BackupMessage = Omit<Message, "audio"> & { audio: string };
 type Backup = {
   format: typeof BACKUP_FORMAT;
   version: 1;
   exportedAt: string;
   settings: Settings | null;
   entries: BackupEntry[];
+  // 伝言は後から足したので、古いバックアップにはない
+  messages?: BackupMessage[];
 };
 
 const blobToDataUrl = (blob: Blob) =>
@@ -141,7 +170,7 @@ const blobToDataUrl = (blob: Blob) =>
   });
 
 export async function exportBackup(): Promise<File> {
-  const [settings, entries] = await Promise.all([getSettings(), listEntries()]);
+  const [settings, entries, messages] = await Promise.all([getSettings(), listEntries(), listMessages()]);
   const backup: Backup = {
     format: BACKUP_FORMAT,
     version: 1,
@@ -150,13 +179,14 @@ export async function exportBackup(): Promise<File> {
     entries: await Promise.all(
       entries.map(async (e) => ({ ...e, photo: e.photo ? await blobToDataUrl(e.photo) : undefined })),
     ),
+    messages: await Promise.all(messages.map(async (m) => ({ ...m, audio: await blobToDataUrl(m.audio) }))),
   };
   const date = new Date().toLocaleDateString("sv-SE"); // 2026-11-03 の形
   return new File([JSON.stringify(backup)], `rin-backup-${date}.json`, { type: "application/json" });
 }
 
 // 今の登録をすべて消して、バックアップの内容に置き換える
-export async function importBackup(file: File): Promise<{ entries: number }> {
+export async function importBackup(file: File): Promise<{ entries: number; messages: number }> {
   let backup: Backup;
   try {
     backup = JSON.parse(await file.text());
@@ -176,17 +206,31 @@ export async function importBackup(file: File): Promise<{ entries: number }> {
       photo: e.photo ? await (await fetch(e.photo)).blob() : undefined,
     })),
   );
+  const messages: Message[] = await Promise.all(
+    (backup.messages ?? [])
+      .filter((m) => m?.audio && m.from)
+      .map(async (m) => ({
+        id: m.id || crypto.randomUUID(),
+        from: m.from,
+        createdAt: m.createdAt ?? Date.now(),
+        heardAt: m.heardAt,
+        audio: await (await fetch(m.audio)).blob(),
+      })),
+  );
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction([SETTINGS, ENTRIES], "readwrite");
+    const tx = db.transaction([SETTINGS, ENTRIES, MESSAGES], "readwrite");
     const store = tx.objectStore(ENTRIES);
     store.clear();
     for (const e of entries) store.put(e);
+    const messageStore = tx.objectStore(MESSAGES);
+    messageStore.clear();
+    for (const m of messages) messageStore.put(m);
     if (backup.settings) tx.objectStore(SETTINGS).put(backup.settings, "main");
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
-  return { entries: entries.length };
+  return { entries: entries.length, messages: messages.length };
 }
 
 // iPad では共有シート(AirDrop・ファイル・LINE など)で渡す。使えなければダウンロードする
