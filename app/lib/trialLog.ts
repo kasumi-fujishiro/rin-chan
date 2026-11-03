@@ -9,9 +9,15 @@ export type TrialEntry = {
   reask: number;
   // 「あれ」から写真で選んだとき。chosen が null なら「ちがう」「やめる」
   pick?: { kind: string; candidates: string[]; chosen: string | null };
+  // 付き添いの家族があとから付ける印。リンちゃんの返事が本人に伝わったか
+  understood?: boolean;
 };
 
+// 付き添いの家族が書くメモ
+export type TrialMemo = { at: string; text: string };
+
 const KEY = "rin-trial-log-v1";
+const MEMO_KEY = "rin-trial-memo-v1";
 
 export function readTrialLog(): TrialEntry[] {
   try {
@@ -31,9 +37,37 @@ export function appendTrialLog(entry: TrialEntry) {
   }
 }
 
+// at(記録した時刻)で1件を探して、伝わったかの印を付け替える。同じ印をもう一度押すと外す
+export function markTrialEntry(at: string, understood: boolean): TrialEntry[] {
+  const log = readTrialLog().map((e) =>
+    e.at === at ? { ...e, understood: e.understood === understood ? undefined : understood } : e,
+  );
+  try {
+    localStorage.setItem(KEY, JSON.stringify(log));
+  } catch {}
+  return log;
+}
+
+export function readTrialMemos(): TrialMemo[] {
+  try {
+    return JSON.parse(localStorage.getItem(MEMO_KEY) ?? "[]");
+  } catch {
+    return [];
+  }
+}
+
+export function addTrialMemo(text: string): TrialMemo[] {
+  const memos = [...readTrialMemos(), { at: new Date().toISOString(), text }];
+  try {
+    localStorage.setItem(MEMO_KEY, JSON.stringify(memos.slice(-300)));
+  } catch {}
+  return memos;
+}
+
 export function clearTrialLog() {
   try {
     localStorage.removeItem(KEY);
+    localStorage.removeItem(MEMO_KEY);
   } catch {}
 }
 
