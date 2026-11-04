@@ -49,6 +49,11 @@ export type Message = {
   createdAt: number;
   // 本人が最後に聞いた時刻。まだなら undefined
   heardAt?: number;
+  // 字幕(家族がキーボードの音声入力などで入れる)。画面に出し、リンちゃんも内容を知る
+  text?: string;
+  // 本人の返事と、伝言を終えた時刻(返事をしたか「わかった」を押したら、カードを出さない)
+  reply?: string;
+  doneAt?: number;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -242,6 +247,9 @@ export async function importBackup(file: File): Promise<{ entries: number; messa
         from: m.from,
         createdAt: m.createdAt ?? Date.now(),
         heardAt: m.heardAt,
+        text: m.text,
+        reply: m.reply,
+        doneAt: m.doneAt,
         audio: await (await fetch(m.audio)).blob(),
       })),
   );

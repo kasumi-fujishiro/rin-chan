@@ -70,6 +70,8 @@ export function Talk() {
   const [now, setNow] = useState(0);
   // 直前にリンちゃんから話しかけたきっかけ。次の本人の言葉を「その反応」として記録する
   const promptRef = useRef<string | null>(null);
+  // 伝言を聞き終えて、本人の返事を待っているとき
+  const messageReplyRef = useRef<Message | null>(null);
   // 「ご家族が伝える」で聞いている間は true。聞き取った言葉を本人向けに言い直す
   const [relayMode, setRelayMode] = useState(false);
   // 家族の言葉の要点。画面に大きく出す
@@ -330,6 +332,44 @@ export function Talk() {
     [profile, entries, say],
   );
 
+  // 自動で聞き取るときに使う最新の値。rec などは描画のたびに作り直されるので、タイマーが消されないよう ref から読む
+  const latest = useRef({ rec, pick, thinking });
+  useEffect(() => {
+    latest.current = { rec, pick, thinking };
+  });
+  // 伝言は、終えていないもののうち、まだ聞いていない新しいものを先に出す(試用で、ずっと出ていて何度も押していたため)
+  const openMessages = messages.filter((m) => !m.doneAt);
+  const message = openMessages.find((m) => !m.heardAt) ?? openMessages[0];
+  const saveMessage = async (updated: Message) => {
+    await putMessage(updated);
+    setMessages((list) => list.map((x) => (x.id === updated.id ? updated : x)));
+  };
+  const heardMessage = async (m: Message) => {
+    const updated = { ...m, heardAt: Date.now() };
+    await saveMessage(updated);
+    // リンちゃんも伝言の中身を知っておく(あとで「何て言ってた?」と聞かれたときのため)
+    if (m.text)
+      setHistory((h) => [...h, { role: "user", content: `(${m.from}からの伝言を聞きました:「${m.text}」)` }]);
+    appendTrialLog({
+      at: new Date().toISOString(),
+      heard: "(伝言を押した)",
+      reply: `${m.from}からの伝言を聞いた`,
+      reask: 0,
+    });
+    // 聞き終わったら、そのまま返事を聞き取る(試用で、押す前に返事をしてしまっていたため)
+    messageReplyRef.current = updated;
+    setTimeout(() => {
+      const { rec, pick, thinking } = latest.current;
+      if (rec.listening || pick || thinking) return;
+      setAutoListening(true);
+      setRelayMode(false);
+      rec.start();
+    }, 300);
+  };
+  const finishMessage = async (m: Message, reply?: string) => {
+    await saveMessage({ ...m, doneAt: Date.now(), reply });
+  };
+
   // マイクが閉じてから返事を作る(iOS では同時に使うと読み上げが鳴らないことがある)
   useEffect(() => {
     if (!pending || rec.listening) return;
@@ -341,13 +381,39 @@ export function Talk() {
       return;
     }
     // 画面の文字を読んだだけの声には返事をしない
-    if (isScreenEcho(pending, [reply, relayBig ?? ""])) {
+    const shownMessage = messages.find((m) => !m.doneAt && m.heardAt);
+    if (
+      isScreenEcho(pending, [
+        reply,
+        relayBig ?? "",
+        shownMessage?.text ?? "",
+        shownMessage ? `${shownMessage.from}から` : "",
+      ])
+    ) {
       appendTrialLog({
         at: new Date().toISOString(),
         heard: pending,
         reply: "(画面の文字を読んだ声として返事をしなかった)",
         reask: 0,
         ignored: true,
+      });
+      return;
+    }
+    // 伝言を聞いたあとの返事は、伝言を出した家族への返事として残し、カードを閉じる
+    const replied = messageReplyRef.current;
+    if (replied) {
+      messageReplyRef.current = null;
+      void finishMessage(replied, pending);
+      const text = `${replied.from}に、伝えておきますね。`;
+      setReply(text);
+      setShown(null);
+      say(text, 1, false);
+      appendTrialLog({
+        at: new Date().toISOString(),
+        heard: pending,
+        reply: text,
+        reask: 0,
+        reactionTo: `${replied.from}からの伝言`,
       });
       return;
     }
@@ -359,10 +425,12 @@ export function Talk() {
       !entries.some((e) => e.name && pending.includes(e.name));
     if (vague) void startPick(pending);
     else void answer(pending);
-  }, [pending, rec.listening, answer, startPick, entries, relayMode, relay, reply, relayBig]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending, rec.listening, answer, startPick, entries, relayMode, relay, reply, relayBig, messages, say]);
 
   const onButton = (forFamily = false) => {
     listenAfterRef.current = false;
+    messageReplyRef.current = null;
     setAutoListening(false);
     speaker.unlock();
     if (!rec.listening) setRelayMode(forFamily);
@@ -375,12 +443,7 @@ export function Talk() {
     speaker.cancel();
   };
 
-  // リンちゃんが話し終わったら、一度だけそのまま聞き取る。何も聞こえなければ待つ画面に戻る。
-  // rec などは描画のたびに作り直されるので、タイマーが消されないよう最新の値は ref から読む
-  const latest = useRef({ rec, pick, thinking });
-  useEffect(() => {
-    latest.current = { rec, pick, thinking };
-  });
+  // リンちゃんが話し終わったら、一度だけそのまま聞き取る。何も聞こえなければ待つ画面に戻る
   const wasSpeaking = useRef(false);
   useEffect(() => {
     const ended = wasSpeaking.current && !speaker.speaking;
@@ -414,20 +477,6 @@ export function Talk() {
   };
   const holdEnd = () => {
     if (holdTimer.current) clearTimeout(holdTimer.current);
-  };
-
-  // 伝言は、まだ聞いていない新しいものを先に出す
-  const message = messages.find((m) => !m.heardAt) ?? messages[0];
-  const heardMessage = async (m: Message) => {
-    const updated = { ...m, heardAt: Date.now() };
-    await putMessage(updated);
-    setMessages((list) => list.map((x) => (x.id === m.id ? updated : x)));
-    appendTrialLog({
-      at: new Date().toISOString(),
-      heard: "(伝言を押した)",
-      reply: `${m.from}からの伝言を聞いた`,
-      reask: 0,
-    });
   };
 
   useEffect(() => {
@@ -547,6 +596,10 @@ export function Talk() {
             speaker.cancel();
           }}
           onHeard={() => void heardMessage(message)}
+          onDone={() => {
+            messageReplyRef.current = null;
+            void finishMessage(message);
+          }}
         />
       )}
       {pick ? (

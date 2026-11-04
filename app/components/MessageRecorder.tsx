@@ -21,6 +21,7 @@ export function MessageRecorder({ defaultFrom }: { defaultFrom: string }) {
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [draft, setDraft] = useState<Blob | null>(null);
+  const [text, setText] = useState("");
   const [error, setError] = useState("");
   const recorderRef = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -38,7 +39,10 @@ export function MessageRecorder({ defaultFrom }: { defaultFrom: string }) {
     setError("");
     setDraft(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // 周りの雑音を抑えて録る(試用で、伝言に雑音が入って聞き取りづらかったため)
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true },
+      });
       const mimeType = pickMimeType();
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       const chunks: Blob[] = [];
@@ -69,7 +73,14 @@ export function MessageRecorder({ defaultFrom }: { defaultFrom: string }) {
 
   const save = async () => {
     if (!draft || !from.trim()) return;
-    await putMessage({ id: crypto.randomUUID(), from: from.trim(), audio: draft, createdAt: Date.now() });
+    await putMessage({
+      id: crypto.randomUUID(),
+      from: from.trim(),
+      audio: draft,
+      text: text.trim() || undefined,
+      createdAt: Date.now(),
+    });
+    setText("");
     setDraft(null);
     setMessages(await listMessages());
   };
@@ -87,6 +98,16 @@ export function MessageRecorder({ defaultFrom }: { defaultFrom: string }) {
           value={from}
           placeholder="例:お母さん"
           onChange={(e) => setFrom(e.target.value)}
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-lg">
+        字幕(伝言の言葉。キーボードのマイクを押して話すと文字になります)
+        <textarea
+          className="w-full rounded-xl border-2 p-3 text-xl"
+          rows={2}
+          value={text}
+          placeholder="例:お母さんだよ。夕方に行くからね。"
+          onChange={(e) => setText(e.target.value)}
         />
       </label>
       <div className="flex flex-wrap items-center gap-4">
@@ -132,6 +153,9 @@ export function MessageRecorder({ defaultFrom }: { defaultFrom: string }) {
                 : "まだ聞いていません"}
             </span>
             <AudioPlayer blob={m.audio} />
+            {m.text && <span className="w-full text-zinc-700">字幕:{m.text}</span>}
+            {m.reply && <span className="w-full font-bold text-sky-800">ご本人の返事:{m.reply}</span>}
+            {m.doneAt && !m.reply && <span className="w-full text-zinc-500">「わかった」を押しました</span>}
             <button
               type="button"
               className="ml-auto rounded-xl bg-zinc-200 px-4 py-2"
