@@ -3,6 +3,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { z } from "zod";
 import { resolveProfile } from "../../lib/profile";
+import { stripLeadingName } from "../../lib/prompt";
 
 // 家族の言葉を、本人に伝わる形に言い直す。その場のやりとりなので速さを優先して Haiku
 const MODEL = "claude-haiku-5-5";
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
 - 短い文で、1〜2文にします。むずかしい言葉は、やさしい言葉にします。
 - 命令や強い口調は、やわらかい誘いかけにします。例:「これ食べなさい」→「これ、ひとくち食べませんか。」
 - 何度も同じことを言われている場面でも、責める言い方にはしません。
-- ${user}を「${user}」と呼び、やわらかい「です・ます」で話します。読み上げるので記号は使いません。
+- 呼びかけは画面の側で付けるので、say の最初に呼び名は書きません。やわらかい「です・ます」で話します。読み上げるので記号は使いません。
 - 家族の言葉にない事実(場所、時間、理由)は足しません。
 - 下の「${user}の言い方」にある物は、必ずその言い方で呼びます(例:「運動靴」ではなく「ズック」)。
 - big には、画面に大きく出す要点を15文字くらいで書きます。例:「ごはん ひとくち」「おくすり のみましたか」
@@ -53,7 +54,12 @@ ${profile.manual.map((m) => `- [${m.kind}] ${m.name}`).join("\n") || "- (なし)
     const out = response.parsed_output;
     if (response.stop_reason === "refusal" || !out) return Response.json({ error: true }, { status: 502 });
     const names = new Set(profile.manual.map((m) => m.name));
-    return Response.json({ say: out.say, big: out.big, entry: names.has(out.entry) ? out.entry : null });
+    // 呼びかけは読み上げるときに画面の側で付ける
+    return Response.json({
+      say: stripLeadingName(out.say, profile),
+      big: out.big,
+      entry: names.has(out.entry) ? out.entry : null,
+    });
   } catch (error) {
     if (error instanceof Anthropic.APIError) console.error(`API エラー ${error.status}:`, error.message);
     else console.error(error);
