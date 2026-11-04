@@ -417,6 +417,19 @@ export function Talk() {
     if (replied) {
       messageReplyRef.current = null;
       void finishMessage(replied, pending);
+      // 家族の LINE にも、その場で知らせる(合言葉が入っていて、知らせる設定のとき)
+      if (settings?.lineKey && settings.notifyReplies !== false) {
+        void fetch("/api/notify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-rin-key": settings.lineKey },
+          body: JSON.stringify({
+            from: replied.from,
+            message: replied.text,
+            reply: pending,
+            userCallName: settings.userCallName,
+          }),
+        }).catch(() => {});
+      }
       const text = `${replied.from}に、伝えておきますね。`;
       setReply(text);
       setShown(null);
@@ -439,7 +452,7 @@ export function Talk() {
     if (vague) void startPick(pending);
     else void answer(pending);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pending, rec.listening, answer, startPick, entries, relayMode, relay, reply, relayBig, messages, say]);
+  }, [pending, rec.listening, answer, startPick, entries, relayMode, relay, reply, relayBig, messages, say, settings]);
 
   const onButton = (forFamily = false) => {
     listenAfterRef.current = false;

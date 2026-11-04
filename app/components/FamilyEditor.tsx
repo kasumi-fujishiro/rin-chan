@@ -21,6 +21,7 @@ import {
 import { KINDS, type Kind } from "../lib/types";
 import { usePhotoUrl } from "../lib/usePhotoUrl";
 import { DictionarySuggestions } from "./DictionarySuggestions";
+import { LineSettings } from "./LineSettings";
 import { MemoriesEditor } from "./MemoriesEditor";
 import { SpotPhoto } from "./SpotPhoto";
 import { VoiceChooser } from "./VoiceChooser";
@@ -192,6 +193,17 @@ export function FamilyEditor() {
       <MessageRecorder
         key={restored}
         defaultFrom={settings.familyCallName === DEFAULT_SETTINGS.familyCallName ? "" : settings.familyCallName} />
+
+      <LineSettings
+        key={`line-${restored}-${loaded}`}
+        settings={settings}
+        onSave={async (patch) => {
+          // 呼び方の欄で編集中のものは保存しない(保存済みの内容に足す)
+          const next = { ...((await getSettings()) ?? DEFAULT_SETTINGS), ...patch };
+          await saveSettings(next);
+          setSettings((s) => ({ ...s, ...patch }));
+        }}
+      />
 
       <Backup
         onImported={async () => {

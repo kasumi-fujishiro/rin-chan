@@ -55,9 +55,11 @@ export function ReportPanel({ log, memos }: { log: TrialEntry[]; memos: TrialMem
     if (!confirm("この報告を LINE に送ります。よろしいですか?")) return;
     setBusy(true);
     try {
+      // 合言葉は家族の登録画面で入れたもの
+      const lineKey = (await getSettings())?.lineKey ?? "";
       const res = await fetch("/api/report", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-rin-key": lineKey },
         body: JSON.stringify({ action: "send", text: report }),
       });
       const data = (await res.json()) as { sent: boolean; reason?: string };

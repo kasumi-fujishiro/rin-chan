@@ -13,6 +13,9 @@ export type Settings = {
   dayService?: DayService;
   // リンちゃんの声。iPad に入っている声から、家族が聞き比べて選ぶ
   voice?: VoiceSetting;
+  // LINE に送るときの合言葉(Cloudflare の RIN_APP_KEY と同じもの)と、伝言の返事を知らせるか
+  lineKey?: string;
+  notifyReplies?: boolean;
 };
 
 export type VoiceSetting = { name: string; rate: number; pitch: number };
