@@ -140,6 +140,12 @@ export function FamilyEditor() {
         </div>
         <EntryForm key={editing?.id ?? `new-${kind}`} kind={kind} entry={editing}
           rooms={entries.filter((e) => e.kind === "場所" && e.photo && e.id !== editing?.id)}
+          onCreateRoom={async (name, photo) => {
+            const room: Entry = { id: crypto.randomUUID(), kind: "場所", name, note: "", photo, updatedAt: Date.now() };
+            await putEntry(room);
+            setEntries(await listEntries());
+            return room;
+          }}
           onDone={async (entry) => {
             if (entry) await putEntry(entry);
             setEntries(await listEntries());
@@ -266,12 +272,15 @@ function EntryForm({
   kind,
   entry,
   rooms,
+  onCreateRoom,
   onDone,
 }: {
   kind: Kind;
   entry: Entry | null;
   // 置き場所を示せる部屋(写真つきの「場所」)
   rooms: Entry[];
+  // その場で部屋の写真を撮って「場所」に登録する
+  onCreateRoom: (name: string, photo: Blob) => Promise<Entry>;
   onDone: (e: Entry | null) => void;
 }) {
   const [name, setName] = useState(entry?.name ?? "");
@@ -280,7 +289,10 @@ function EntryForm({
   const [spot, setSpot] = useState<Spot | undefined>(entry?.spot);
   const room = rooms.find((r) => r.id === spot?.roomId);
   const [busy, setBusy] = useState(false);
+  const [newRoomName, setNewRoomName] = useState("");
+  const [addingRoom, setAddingRoom] = useState(false);
   const preview = usePhotoUrl(photo);
+  const isThing = (entry?.kind ?? kind) === "物";
 
   const submit = () => {
     if (!name.trim()) return;
@@ -295,54 +307,95 @@ function EntryForm({
     });
   };
 
+  const pickPhoto = async (file: File | undefined, apply: (b: Blob) => void | Promise<void>) => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      await apply(await shrinkPhoto(file));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const step = "flex flex-col gap-2 rounded-xl bg-amber-50 p-3";
+  const stepTitle = "text-lg font-bold";
+
   return (
     <div className="flex flex-col gap-3 rounded-2xl border-2 border-dashed border-amber-300 p-4">
       <h3 className="text-xl font-bold">{entry ? `「${entry.name}」を直す` : `「${kind}」を足す`}</h3>
-      <input className={field} value={name} placeholder={`名前(${KIND_HINT[kind]})`} onChange={(e) => setName(e.target.value)} />
-      <textarea className={field} rows={3} value={note}
-        placeholder={(entry?.kind ?? kind) === "物" ? "短い説明(下で置き場所を写真で示せば、なくても大丈夫です)" : "短い説明(例:ふだんは居間のテーブルの、青いケースに入っています)"}
-        onChange={(e) => setNote(e.target.value)} />
-      {(entry?.kind ?? kind) === "物" && (
-        <div className="flex flex-col gap-2 rounded-xl bg-amber-50 p-3">
-          <p className="text-lg font-bold">置き場所を写真で示す</p>
-          {rooms.length === 0 ? (
-            <p className="text-lg text-zinc-600">「場所」に部屋の写真(居間、台所など)を登録すると、その写真の上で置き場所を示せます。</p>
-          ) : (
+
+      <div className={step}>
+        <p className={stepTitle}>1. 名前</p>
+        <input className={field} value={name} placeholder={KIND_HINT[kind]} onChange={(e) => setName(e.target.value)} />
+      </div>
+
+      <div className={step}>
+        <p className={stepTitle}>2. {isThing ? "物" : kind}の写真</p>
+        <div className="flex flex-wrap items-center gap-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {preview && <img src={preview} alt="" className="h-28 w-28 rounded-xl object-cover" />}
+          <label className="cursor-pointer rounded-xl bg-amber-100 px-4 py-3 text-lg">
+            {busy ? "写真を準備中…" : preview ? "写真を変える" : "写真を撮る・選ぶ"}
+            <input type="file" accept="image/*" className="hidden"
+              onChange={(e) => pickPhoto(e.target.files?.[0], setPhoto)} />
+          </label>
+        </div>
+      </div>
+
+      {isThing && (
+        // 試用で、置き場所を選ぶ欄が見つからなかったので、手順の1つとしてはっきり出す
+        <div className={step}>
+          <p className={stepTitle}>3. どこにありますか?</p>
+          {rooms.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {rooms.map((r) => (
+                <button key={r.id} type="button" onClick={() => { setSpot({ roomId: r.id, x: 0.5, y: 0.5 }); setAddingRoom(false); }}
+                  className={`rounded-xl px-4 py-2 text-lg ${spot?.roomId === r.id ? "bg-amber-600 text-white" : "bg-white"}`}>
+                  {r.name}
+                </button>
+              ))}
+              <button type="button" onClick={() => setAddingRoom(true)} className="rounded-xl bg-white px-4 py-2 text-lg">
+                + ほかの部屋
+              </button>
+            </div>
+          )}
+          {(rooms.length === 0 || addingRoom) && (
+            <div className="flex flex-col gap-2">
+              <p className="text-lg text-zinc-600">置いてある部屋(や棚)の写真を撮ってください。部屋の写真は、ほかの物でも使えます。</p>
+              <input className={field} value={newRoomName} placeholder="部屋の名前(例:居間、台所、寝室の棚)"
+                onChange={(e) => setNewRoomName(e.target.value)} />
+              <label className={`cursor-pointer self-start rounded-xl px-4 py-3 text-lg ${newRoomName.trim() ? "bg-amber-100" : "bg-zinc-100 text-zinc-400"}`}>
+                {busy ? "写真を準備中…" : "部屋の写真を撮る"}
+                <input type="file" accept="image/*" className="hidden" disabled={!newRoomName.trim()}
+                  onChange={(e) => pickPhoto(e.target.files?.[0], async (b) => {
+                    const created = await onCreateRoom(newRoomName.trim(), b);
+                    setSpot({ roomId: created.id, x: 0.5, y: 0.5 });
+                    setNewRoomName("");
+                    setAddingRoom(false);
+                  })} />
+              </label>
+            </div>
+          )}
+          {room?.photo && (
             <>
-              <select className={field} value={spot?.roomId ?? ""}
-                onChange={(e) => setSpot(e.target.value ? { roomId: e.target.value, x: 0.5, y: 0.5 } : undefined)}>
-                <option value="">示さない</option>
-                {rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-              </select>
-              {room?.photo && (
-                <>
-                  <p className="text-lg text-zinc-600">写真の上で、置いてある場所を押してください。</p>
-                  <SpotPhoto room={room.photo} spot={spot} className="max-h-80"
-                    onPick={(x, y) => setSpot({ roomId: room.id, x, y })} />
-                </>
-              )}
+              <p className="text-lg font-bold text-rose-700">写真の上で、置いてある場所を押してください(赤い丸が動きます)</p>
+              <SpotPhoto room={room.photo} spot={spot} className="max-h-80"
+                onPick={(x, y) => setSpot({ roomId: room.id, x, y })} />
+              <button type="button" onClick={() => setSpot(undefined)} className="self-start text-base text-zinc-500 underline">
+                置き場所を示さない
+              </button>
             </>
           )}
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-4">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        {preview && <img src={preview} alt="" className="h-28 w-28 rounded-xl object-cover" />}
-        <label className="cursor-pointer rounded-xl bg-amber-100 px-4 py-3 text-lg">
-          {busy ? "写真を準備中…" : preview ? "写真を変える" : "写真を撮る・選ぶ"}
-          <input type="file" accept="image/*" className="hidden"
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-              setBusy(true);
-              try {
-                setPhoto(await shrinkPhoto(file));
-              } finally {
-                setBusy(false);
-              }
-            }} />
-        </label>
+
+      <div className={step}>
+        <p className={stepTitle}>{isThing ? "4" : "3"}. 短い説明(なくても大丈夫です)</p>
+        <textarea className={field} rows={2} value={note}
+          placeholder={isThing ? "例:青いケースに入っています" : "例:娘です。火曜と金曜のお昼に来ます"}
+          onChange={(e) => setNote(e.target.value)} />
       </div>
+
       <div className="flex gap-3">
         <button type="button" onClick={submit} disabled={busy || !name.trim()}
           className="flex-1 rounded-2xl bg-amber-600 py-4 text-2xl text-white disabled:opacity-40">

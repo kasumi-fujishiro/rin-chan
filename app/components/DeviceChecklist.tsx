@@ -11,6 +11,8 @@ export function DeviceChecklist({ heard }: { heard: boolean }) {
   const [photo, setPhoto] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
   const audioUrl = useRef<string | null>(null);
+  // 録り終わったあとの自動再生は iPad で止められるので、再生ボタンを出して押してもらう
+  const [recorded, setRecorded] = useState<string | null>(null);
 
   const set = (key: string, s: Status, note = "") => {
     setStatus((x) => ({ ...x, [key]: s }));
@@ -81,10 +83,8 @@ export function DeviceChecklist({ heard }: { heard: boolean }) {
         const blob = new Blob(chunks, { type: rec.mimeType || type });
         if (audioUrl.current) URL.revokeObjectURL(audioUrl.current);
         audioUrl.current = URL.createObjectURL(blob);
-        const audio = new Audio(audioUrl.current);
-        audio.onended = () => set("record", "未", "自分の声が聞こえたら「聞こえた」を押してください");
-        audio.onerror = () => set("record", "✕", "録った声を再生できませんでした");
-        void audio.play().catch(() => set("record", "✕", "録った声を再生できませんでした"));
+        setRecorded(audioUrl.current);
+        set("record", "未", "下の ▶ を押して、自分の声が聞こえたら「聞こえた」を押してください");
       };
       setRecording(true);
       set("record", "未", "3秒録音しています。何か話してください");
@@ -170,6 +170,7 @@ export function DeviceChecklist({ heard }: { heard: boolean }) {
       </ul>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {photo && <img src={photo} alt="" className="h-32 w-32 rounded-xl object-cover" />}
+      {recorded && <audio src={recorded} controls className="w-full" />}
     </section>
   );
 }

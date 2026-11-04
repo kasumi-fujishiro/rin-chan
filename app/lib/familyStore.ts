@@ -157,21 +157,29 @@ export function toProfile(settings: Settings | null, entries: Entry[]): Profile 
   };
 }
 
-// 写真は長い辺 1200px の JPEG に縮めてから保存する
+// 写真は長い辺 1200px の JPEG に縮めてから保存する。
+// 縮められないとき(読み込みが終わらない、変換に失敗する)は、そのまま保存して先に進む
 export async function shrinkPhoto(file: File, maxSide = 1200): Promise<Blob> {
   const url = URL.createObjectURL(file);
   try {
     const img = new Image();
-    img.src = url;
-    await img.decode();
+    // decode() は環境によって終わらないことがあったので、load イベントで待ち、8秒で諦める
+    const loaded = await Promise.race([
+      new Promise<boolean>((resolve) => {
+        img.onload = () => resolve(true);
+        img.onerror = () => resolve(false);
+        img.src = url;
+      }),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8000)),
+    ]);
+    if (!loaded || !img.naturalWidth) return file;
     const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(img.naturalWidth * scale);
     canvas.height = Math.round(img.naturalHeight * scale);
     canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
-    return await new Promise((resolve, reject) =>
-      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("写真を変換できません"))), "image/jpeg", 0.85),
-    );
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+    return blob ?? file;
   } finally {
     URL.revokeObjectURL(url);
   }

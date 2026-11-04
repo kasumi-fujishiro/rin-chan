@@ -31,7 +31,7 @@ import { markRinPromptUsed, pickRinPrompt, type RinPrompt } from "../lib/rinProm
 
 type Turn = Anthropic.MessageParam & { content: string };
 
-// 返事に名前が出てきた登録を探す(長い名前を優先)。その写真を大きく見せる
+// 本人の言葉と返事に名前が出てきた登録を探す(長い名前を優先)。その写真を大きく見せる
 // 「眼鏡は居間に」のように物と場所が両方出たら、物を優先する(物の置き場所の写真に場所も写るため)
 const KIND_ORDER = { 物: 0, 人: 1, 場所: 2 } as const;
 
@@ -161,7 +161,7 @@ export function Talk() {
       // 聞き返されたときは、前の写真をそのまま見せ続ける
       setShown(
         (prev) =>
-          findMentioned(text, entries) ?? (picked?.photo || picked?.spot ? picked : reask > 0 ? prev : null),
+          findMentioned(`${heard} ${text}`, entries) ?? (picked?.photo || picked?.spot ? picked : reask > 0 ? prev : null),
       );
       // 2回目以降の聞き返しは、画面にも大きな文字で出す
       setBigText(reask >= 2);
