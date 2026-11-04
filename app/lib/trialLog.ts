@@ -82,7 +82,8 @@ export function clearTrialLog() {
 // 「え?」「なに?」「もう一回」など、短い聞き返しだけを拾う。
 // 「ええ」「はい」は返事なので聞き返しにしない
 const REASK_WHOLE = /^(え[っー〜]?|ん[ー〜]?|なに|何|なあに|なんて|なんですか|はあ)$/;
-const REASK_PHRASE = /(もう(一|いっ)(回|かい|ぺん|度)|聞こえ|きこえ|わからない|分からない|なんて言った|何て言った)/;
+const REASK_PHRASE =
+  /(もう(一|いっ)(回|かい|ぺん|度)|聞こえ|きこえ|わからない|分からない|なんて言った|何て言った)/;
 
 export function isReask(text: string): boolean {
   const t = text.replace(/[\s。、?!?!]/g, "");
@@ -97,7 +98,17 @@ export function isVague(text: string): boolean {
 }
 
 // 画面の文字を読み上げただけの声(試用で「止める」「お話しください」を何度も読んでいた)。返事をしない
-const UI_WORDS = ["はなす", "話す", "とめる", "止める", "お話しください", "どうぞお話しください", "ご家族が伝える", "おしてください", "もう一度きく"];
+const UI_WORDS = [
+  "はなす",
+  "話す",
+  "とめる",
+  "止める",
+  "お話しください",
+  "どうぞお話しください",
+  "ご家族が伝える",
+  "おしてください",
+  "もう一度きく",
+];
 const plain = (t: string) => t.replace(/[\s、。,.!?!?「」()()…・]/g, "");
 
 export function isScreenEcho(heard: string, screenTexts: string[]): boolean {
@@ -106,4 +117,18 @@ export function isScreenEcho(heard: string, screenTexts: string[]): boolean {
   if (UI_WORDS.some((w) => plain(w) === h)) return true;
   // 画面に出ているリンちゃんの返事を、そのまま読んだとき(短い相づちは本人の返事として扱う)
   return h.length >= 6 && screenTexts.some((t) => plain(t).includes(h));
+}
+
+// 同じことを何度も聞いていたら数える(家族への報告用。本人には言わない)
+export function countRepeats(log: TrialEntry[], min = 2): { text: string; count: number }[] {
+  const counts = new Map<string, { text: string; count: number }>();
+  for (const e of log) {
+    if (e.pick || e.prompt || e.ignored || e.relay || e.reask > 0 || e.heard.startsWith("(")) continue;
+    const key = plain(e.heard);
+    if (key.length < 2) continue;
+    const c = counts.get(key) ?? { text: e.heard, count: 0 };
+    c.count++;
+    counts.set(key, c);
+  }
+  return [...counts.values()].filter((c) => c.count >= min).sort((a, b) => b.count - a.count);
 }

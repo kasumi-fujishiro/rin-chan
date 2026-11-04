@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import {
   addTrialMemo,
   clearTrialLog,
+  countRepeats,
   markTrialEntry,
   readTrialLog,
   readTrialMemos,
@@ -70,6 +71,7 @@ export function TrialLogView() {
   const ng = talks.filter((e) => e.understood === false).length;
   // どの言い直しで伝わったか(0 は言い直しなし)
   const okByStage = [0, 1, 2, 3].map((s) => ok.filter((e) => e.reask === s).length);
+  const repeats = countRepeats(log);
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8">
@@ -90,6 +92,7 @@ export function TrialLogView() {
           伝わった {ok.length} 回(言い直しなし {okByStage[0]}・1回目 {okByStage[1]}・2回目 {okByStage[2]}) /
           伝わらなかった {ng} 回
         </p>
+        {repeats.length > 0 && <p>くり返し:{repeats.map((r) => `「${r.text}」${r.count}回`).join("、")}</p>}
       </div>
 
       <ReportPanel log={log} memos={memos} />
@@ -169,9 +172,7 @@ export function TrialLogView() {
                   <span className="ml-2 font-bold text-sky-700">{r.entry.reactionTo}への反応</span>
                 )}
                 {r.entry.relay && <span className="ml-2 font-bold text-sky-700">ご家族の言葉を伝えた</span>}
-                {r.entry.ignored && (
-                  <span className="ml-2 font-bold text-zinc-500">返事なし</span>
-                )}
+                {r.entry.ignored && <span className="ml-2 font-bold text-zinc-500">返事なし</span>}
               </p>
               <p>
                 {r.entry.relay ? "ご家族" : "本人"}:{r.entry.heard}

@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type Anthropic from "@anthropic-ai/sdk";
 import { MessageCard } from "./MessageCard";
 import { RinPromptCard } from "./RinPromptCard";
 import { SpotPhoto } from "./SpotPhoto";
@@ -27,9 +26,8 @@ import {
 import type { Kind, Profile } from "../lib/types";
 import { usePhotoUrl } from "../lib/usePhotoUrl";
 import { useWakeLock } from "../lib/useWakeLock";
+import { freshIfStale, loadConversation, saveConversation, type Turn } from "../lib/conversation";
 import { markRinPromptUsed, pickRinPrompt, type RinPrompt } from "../lib/rinPrompt";
-
-type Turn = Anthropic.MessageParam & { content: string };
 
 // 本人の言葉と返事に名前が出てきた登録を探す(長い名前を優先)。その写真を大きく見せる
 // 「眼鏡は居間に」のように物と場所が両方出たら、物を優先する(物の置き場所の写真に場所も写るため)
@@ -109,10 +107,21 @@ export function Talk() {
       setMessages(msgs);
       setSettings(settings);
       if (settings?.voice) setVoiceSetting(settings.voice);
+      // 30分以内に話していたら、再読み込みしても会話の流れを続ける
+      const restored = loadConversation();
+      if (restored.length) {
+        setHistory(restored);
+        setLastActivity(Date.now());
+      }
       setProfile(toProfile(settings, list));
       void requestPersist();
     })();
   }, []);
+
+  // 会話の流れを iPad の中に残す(再読み込みしても続くように)
+  useEffect(() => {
+    if (history.length) saveConversation(history);
+  }, [history]);
 
   const onFinal = useCallback((text: string) => setPending(text), []);
   const rec = useRecognition(onFinal);
@@ -120,12 +129,14 @@ export function Talk() {
   const answer = useCallback(
     // picked:「あれ」から写真で選んだもの。その名前を添えて Claude に渡す
     async (heard: string, picked?: Entry) => {
-      const asked = !picked && history.length > 0 && isReask(heard);
+      // 30分以上空いていたら、前の話題を持ち込まず新しい会話として始める
+      const base = freshIfStale(history, lastActivity);
+      const asked = !picked && base.length > 0 && isReask(heard);
       const reask = asked ? Math.min(reaskRef.current + 1, 3) : 0;
       reaskRef.current = reask >= 3 ? 0 : reask;
 
       const content = picked ? `${heard}\n(写真で「${picked.name}」を選びました)` : heard;
-      const messages: Turn[] = [...history, { role: "user", content }];
+      const messages: Turn[] = [...base, { role: "user", content }];
       setThinking(true);
       let text: string;
       let ignored = false;
@@ -161,7 +172,8 @@ export function Talk() {
       // 聞き返されたときは、前の写真をそのまま見せ続ける
       setShown(
         (prev) =>
-          findMentioned(`${heard} ${text}`, entries) ?? (picked?.photo || picked?.spot ? picked : reask > 0 ? prev : null),
+          findMentioned(`${heard} ${text}`, entries) ??
+          (picked?.photo || picked?.spot ? picked : reask > 0 ? prev : null),
       );
       // 2回目以降の聞き返しは、画面にも大きな文字で出す
       setBigText(reask >= 2);
@@ -178,7 +190,7 @@ export function Talk() {
       promptRef.current = null;
       setLastActivity(Date.now());
     },
-    [history, say, profile, entries],
+    [history, lastActivity, say, profile, entries],
   );
 
   // ---- 「あれ」→ 写真で選ぶ ----
@@ -302,7 +314,8 @@ export function Talk() {
         const res = await fetch("/api/relay", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ heard, profile }),
+          // 「それ」「さっきの」が分かるよう、直前の会話も渡す
+          body: JSON.stringify({ heard, profile, recent: freshIfStale(history, lastActivity).slice(-6) }),
         });
         data = await res.json();
       } catch {
@@ -329,7 +342,7 @@ export function Talk() {
       setLastActivity(Date.now());
       appendTrialLog({ at: new Date().toISOString(), heard, reply: data.say, reask: 0, relay: true });
     },
-    [profile, entries, say],
+    [profile, entries, say, history, lastActivity],
   );
 
   // 自動で聞き取るときに使う最新の値。rec などは描画のたびに作り直されるので、タイマーが消されないよう ref から読む

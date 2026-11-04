@@ -18,7 +18,12 @@ const Relay = z.object({
 });
 
 export async function POST(request: Request) {
-  const body = (await request.json()) as { heard: string; profile?: unknown };
+  const body = (await request.json()) as {
+    heard: string;
+    profile?: unknown;
+    // 直前の会話(新しいものが最後)
+    recent?: { role: "user" | "assistant"; content: string }[];
+  };
   const { profile } = resolveProfile(body.profile);
   const env = getCloudflareContext().env as { [key: string]: string | undefined };
   const user = profile.userCallName;
@@ -32,6 +37,7 @@ export async function POST(request: Request) {
 - 何度も同じことを言われている場面でも、責める言い方にはしません。
 - 呼びかけは画面の側で付けるので、say の最初に呼び名は書きません。やわらかい「です・ます」で話します。読み上げるので記号は使いません。
 - 家族の言葉にない事実(場所、時間、理由)は足しません。
+- 家族の言葉の「それ」「あれ」「さっきの」が何を指すかは、下の直前の会話にはっきり出ているときだけ、その言葉に置きかえます。はっきりしないときは置きかえません。
 - 下の「${user}の言い方」にある物は、必ずその言い方で呼びます(例:「運動靴」ではなく「ズック」)。
 - big には、画面に大きく出す要点を15文字くらいで書きます。例:「ごはん ひとくち」「おくすり のみましたか」
 - entry には、下の「登録されているもの」の中で、家族の言葉に関係するものの名前をそのまま1つだけ書きます。なければ空にします。
@@ -49,7 +55,20 @@ ${profile.manual.map((m) => `- [${m.kind}] ${m.name}`).join("\n") || "- (なし)
       max_tokens: 1024,
       output_config: { effort: "low", format: zodOutputFormat(Relay) },
       system,
-      messages: [{ role: "user", content: `# 家族が話したこと\n${String(body.heard ?? "").slice(0, 500)}` }],
+      messages: [
+        {
+          role: "user",
+          content: `# 直前の会話\n${
+            (body.recent ?? [])
+              .slice(-6)
+              .map(
+                (m) =>
+                  `${m.role === "user" ? user : profile.assistantName}:${String(m.content).slice(0, 300)}`,
+              )
+              .join("\n") || "(なし)"
+          }\n\n# 家族が話したこと\n${String(body.heard ?? "").slice(0, 500)}`,
+        },
+      ],
     });
     const out = response.parsed_output;
     if (response.stop_reason === "refusal" || !out) return Response.json({ error: true }, { status: 502 });
