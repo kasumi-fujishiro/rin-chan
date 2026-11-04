@@ -83,10 +83,21 @@ export function Talk() {
   const voices = useJapaneseVoices();
   const [voiceSetting, setVoiceSetting] = useState(DEFAULT_VOICE);
   const voice = voices.find((v) => v.name === voiceSetting.name);
+  // 話し終わったら、本人の返事をそのまま聞き取るか(毎回ボタンを押すのが難しかったため)
+  const listenAfterRef = useRef(false);
+  const [autoListening, setAutoListening] = useState(false);
   const say = useCallback(
-    (text: string, slow = 1) =>
-      speaker.speak(text, { voice, rate: voiceSetting.rate * slow, pitch: voiceSetting.pitch }),
-    [speaker, voice, voiceSetting],
+    (text: string, slow = 1, listenAfter = true) => {
+      listenAfterRef.current = listenAfter;
+      // 最初に必ず呼び名で呼びかけてから本題に入る(試用で、話の後半しか聞いていないことがあったため)
+      speaker.speak(text, {
+        voice,
+        rate: voiceSetting.rate * slow,
+        pitch: voiceSetting.pitch,
+        lead: settings?.userCallName || undefined,
+      });
+    },
+    [speaker, voice, voiceSetting, settings],
   );
 
   useEffect(() => {
@@ -196,7 +207,7 @@ export function Talk() {
   const showPhotos = useCallback(
     (heard: string, kind: Kind | "不明", candidates: Entry[], byKind: boolean) => {
       setPick({ stage: "photos", heard, kind, candidates, byKind });
-      say("これですか?");
+      say("これですか?", 1, false);
     },
     [say],
   );
@@ -218,7 +229,7 @@ export function Talk() {
         showPhotos(heard, result.kind, result.candidates, false);
       } else {
         setPick({ stage: "kind", heard });
-        say("物ですか。人ですか。場所ですか。", 0.94);
+        say("物ですか。人ですか。場所ですか。", 0.94, false);
       }
     },
     [guess, answer, showPhotos, say],
@@ -245,7 +256,7 @@ export function Talk() {
   const notThis = () => {
     if (pick?.stage === "photos" && !pick.byKind) {
       setPick({ stage: "kind", heard: pick.heard });
-      say("物ですか。人ですか。場所ですか。", 0.94);
+      say("物ですか。人ですか。場所ですか。", 0.94, false);
     } else {
       closePick(null);
     }
@@ -351,6 +362,8 @@ export function Talk() {
   }, [pending, rec.listening, answer, startPick, entries, relayMode, relay, reply, relayBig]);
 
   const onButton = (forFamily = false) => {
+    listenAfterRef.current = false;
+    setAutoListening(false);
     speaker.unlock();
     if (!rec.listening) setRelayMode(forFamily);
     if (rec.listening) {
@@ -361,6 +374,28 @@ export function Talk() {
     }
     speaker.cancel();
   };
+
+  // リンちゃんが話し終わったら、一度だけそのまま聞き取る。何も聞こえなければ待つ画面に戻る。
+  // rec などは描画のたびに作り直されるので、タイマーが消されないよう最新の値は ref から読む
+  const latest = useRef({ rec, pick, thinking });
+  useEffect(() => {
+    latest.current = { rec, pick, thinking };
+  });
+  const wasSpeaking = useRef(false);
+  useEffect(() => {
+    const ended = wasSpeaking.current && !speaker.speaking;
+    wasSpeaking.current = speaker.speaking;
+    if (!ended || !listenAfterRef.current) return;
+    listenAfterRef.current = false;
+    setTimeout(() => {
+      const { rec, pick, thinking } = latest.current;
+      if (rec.listening || pick || thinking) return;
+      // iPad が押さずに聞き取るのを許さないときは、エラーは出さずに待つ画面のままにする
+      setAutoListening(true);
+      setRelayMode(false);
+      rec.start();
+    }, 400);
+  }, [speaker.speaking]);
 
   // 家族用の入口:リンちゃんを2秒長押しすると登録画面へ(本人がふだん触らない場所)
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -553,7 +588,7 @@ export function Talk() {
         </>
       )}
       <StandaloneWarning />
-      {rec.error && (
+      {rec.error && !autoListening && (
         <p role="alert" className="w-full rounded-2xl bg-rose-100 p-4 text-xl text-rose-900">
           {rec.error}
         </p>

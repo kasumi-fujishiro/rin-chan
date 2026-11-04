@@ -214,27 +214,38 @@ export function useSpeaker() {
   const [speaking, setSpeaking] = useState(false);
 
   const speak = useCallback(
-    (text: string, opts: { voice?: SpeechSynthesisVoice; rate?: number; pitch?: number } = {}) => {
+    (
+      text: string,
+      // lead:本題の前に、別に読み上げる呼びかけ(「ハルさん。」のあとに少し間があく)
+      opts: { voice?: SpeechSynthesisVoice; rate?: number; pitch?: number; lead?: string } = {},
+    ) => {
       if (!("speechSynthesis" in window)) return;
       speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = "ja-JP";
-      if (opts.voice) u.voice = opts.voice;
-      u.rate = opts.rate ?? 0.8;
-      u.pitch = opts.pitch ?? 1;
-      u.onstart = () => {
+      const make = (t: string) => {
+        const u = new SpeechSynthesisUtterance(t);
+        u.lang = "ja-JP";
+        if (opts.voice) u.voice = opts.voice;
+        u.rate = opts.rate ?? 0.8;
+        u.pitch = opts.pitch ?? 1;
+        return u;
+      };
+      const parts = opts.lead ? [make(`${opts.lead}。`), make(text)] : [make(text)];
+      parts[0].onstart = () => {
         logSpeech("読み上げ開始");
         setSpeaking(true);
       };
-      u.onend = () => {
+      const last = parts[parts.length - 1];
+      last.onend = () => {
         logSpeech("読み上げ終了");
         setSpeaking(false);
       };
-      u.onerror = (e) => {
-        logSpeech(`読み上げエラー ${e.error}`);
-        setSpeaking(false);
-      };
-      speechSynthesis.speak(u);
+      for (const u of parts) {
+        u.onerror = (e) => {
+          logSpeech(`読み上げエラー ${e.error}`);
+          setSpeaking(false);
+        };
+        speechSynthesis.speak(u);
+      }
     },
     [],
   );
