@@ -55,7 +55,7 @@ export function TrialLogView() {
           e.prompt ? `【リンちゃんから:${e.prompt}】` : "",
           e.reactionTo ? `【${e.reactionTo}への反応】` : "",
           e.relay ? "【ご家族の言葉を伝えた】" : "",
-          e.ignored ? "【テレビなどの声として返事をしなかった】" : "",
+          e.ignored ? "【返事をしなかった】" : "",
           e.understood === true ? "【伝わった】" : e.understood === false ? "【伝わらなかった】" : "",
         ].join("");
         return `${time(e.at)}${tags}\n${e.relay ? "ご家族" : "本人"}:${e.heard}\nリンちゃん:${e.reply}`;
@@ -170,7 +170,7 @@ export function TrialLogView() {
                 )}
                 {r.entry.relay && <span className="ml-2 font-bold text-sky-700">ご家族の言葉を伝えた</span>}
                 {r.entry.ignored && (
-                  <span className="ml-2 font-bold text-zinc-500">テレビなどの声(返事なし)</span>
+                  <span className="ml-2 font-bold text-zinc-500">返事なし</span>
                 )}
               </p>
               <p>

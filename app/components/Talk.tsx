@@ -11,7 +11,7 @@ import { PhotoPicker, type PickState } from "./PhotoPicker";
 import { StandaloneWarning } from "./StandaloneWarning";
 import { Rin, type RinMood } from "./Rin";
 import { useJapaneseVoices, useRecognition, useSpeaker } from "../lib/speech";
-import { appendTrialLog, isReask, isVague } from "../lib/trialLog";
+import { appendTrialLog, isReask, isScreenEcho, isVague } from "../lib/trialLog";
 import {
   DEFAULT_VOICE,
   getSettings,
@@ -53,7 +53,8 @@ function formatClock(d: Date) {
 export function Talk() {
   const router = useRouter();
   const [history, setHistory] = useState<Turn[]>([]);
-  const [reply, setReply] = useState("ボタンを押して、話しかけてくださいね。");
+  // 画面の文字は本人が読み上げてしまうので、最初は何も出さない
+  const [reply, setReply] = useState("");
   const [thinking, setThinking] = useState(false);
   const [bigText, setBigText] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
@@ -129,11 +130,9 @@ export function Talk() {
       }
       setThinking(false);
 
-      // テレビなどの声だったときは、しゃべらずに文字だけで知らせる(会話にも入れない)
+      // テレビなどの声だったときは、何もしない(画面の文字も本人が読んでしまうので出さない。会話にも入れない)
       if (ignored) {
         reaskRef.current = Math.max(0, reask - 1);
-        setReply("テレビの音だったかもしれません。もう一度、押して話してくださいね。");
-        setBigText(false);
         appendTrialLog({
           at: new Date().toISOString(),
           heard,
@@ -330,6 +329,17 @@ export function Talk() {
       void relay(pending);
       return;
     }
+    // 画面の文字を読んだだけの声には返事をしない
+    if (isScreenEcho(pending, [reply, relayBig ?? ""])) {
+      appendTrialLog({
+        at: new Date().toISOString(),
+        heard: pending,
+        reply: "(画面の文字を読んだ声として返事をしなかった)",
+        reask: 0,
+        ignored: true,
+      });
+      return;
+    }
     // 「あれ」「あの」で、登録した名前が出てこないときは写真で選んでもらう
     const vague =
       entries.length > 0 &&
@@ -338,7 +348,7 @@ export function Talk() {
       !entries.some((e) => e.name && pending.includes(e.name));
     if (vague) void startPick(pending);
     else void answer(pending);
-  }, [pending, rec.listening, answer, startPick, entries, relayMode, relay]);
+  }, [pending, rec.listening, answer, startPick, entries, relayMode, relay, reply, relayBig]);
 
   const onButton = (forFamily = false) => {
     speaker.unlock();
@@ -514,21 +524,20 @@ export function Talk() {
             }`}
             aria-live="polite"
           >
-            {rec.listening
-              ? rec.interim || (relayMode ? "ご家族の方、伝えたいことをどうぞ。" : "どうぞ、お話しください。")
-              : thinking
-                ? "……"
-                : reply}
+            {/* 聞いている間は、指示の文字を出さない(本人が読み上げてしまうため)。聞き取った言葉だけ出す */}
+            {rec.listening ? rec.interim : thinking ? "……" : reply}
           </p>
           <button
             type="button"
             onClick={() => onButton(false)}
             disabled={thinking}
-            className={`${crowded ? "h-24" : "h-32"} w-full max-w-md rounded-full text-5xl font-bold text-white shadow-lg active:scale-95 disabled:opacity-50 ${
-              rec.listening ? "bg-rose-500" : "bg-amber-600"
+            aria-label={rec.listening ? "とめる" : "はなす"}
+            className={`${crowded ? "h-24" : "h-32"} flex w-full max-w-md items-center justify-center rounded-full text-white shadow-lg active:scale-95 disabled:opacity-50 ${
+              rec.listening ? "animate-pulse bg-rose-500" : "bg-amber-600"
             }`}
           >
-            {rec.listening ? "とめる" : "はなす"}
+            {/* 文字は読み上げられてしまうので、絵だけにする */}
+            {rec.listening ? <StopIcon /> : <MicIcon />}
           </button>
           {/* 家族がそばで話すとき用。本人の「はなす」より控えめにする */}
           {!rec.listening && (
@@ -557,5 +566,22 @@ export function Talk() {
         家族の方へ
       </Link>
     </main>
+  );
+}
+
+function MicIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-16 w-16" fill="currentColor" aria-hidden>
+      <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z" />
+      <path d="M18 11a1 1 0 1 0-2 0 4 4 0 0 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.91V19H9a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-2.09A6 6 0 0 0 18 11Z" />
+    </svg>
+  );
+}
+
+function StopIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-14 w-14" fill="currentColor" aria-hidden>
+      <rect x="6" y="6" width="12" height="12" rx="2" />
+    </svg>
   );
 }

@@ -95,3 +95,15 @@ const VAGUE = /(あれ|あの|ほら|なんだっけ|何だっけ|なんて言�
 export function isVague(text: string): boolean {
   return VAGUE.test(text.replace(/\s/g, ""));
 }
+
+// 画面の文字を読み上げただけの声(試用で「止める」「お話しください」を何度も読んでいた)。返事をしない
+const UI_WORDS = ["はなす", "話す", "とめる", "止める", "お話しください", "どうぞお話しください", "ご家族が伝える", "おしてください", "もう一度きく"];
+const plain = (t: string) => t.replace(/[\s、。,.!?!?「」()()…・]/g, "");
+
+export function isScreenEcho(heard: string, screenTexts: string[]): boolean {
+  const h = plain(heard);
+  if (!h) return false;
+  if (UI_WORDS.some((w) => plain(w) === h)) return true;
+  // 画面に出ているリンちゃんの返事を、そのまま読んだとき(短い相づちは本人の返事として扱う)
+  return h.length >= 6 && screenTexts.some((t) => plain(t).includes(h));
+}
