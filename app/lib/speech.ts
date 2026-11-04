@@ -26,7 +26,10 @@ type RecognitionCtor = new () => Recognition;
 // iPad で聞き取りが止まる原因を調べるための記録(/check に表示する)
 export const speechLog: string[] = [];
 export function logSpeech(message: string) {
-  const t = new Date().toLocaleTimeString("ja-JP", { hour12: false }) + "." + String(Date.now() % 1000).padStart(3, "0");
+  const t =
+    new Date().toLocaleTimeString("ja-JP", { hour12: false }) +
+    "." +
+    String(Date.now() % 1000).padStart(3, "0");
   speechLog.unshift(`${t} ${message}`);
   speechLog.length = Math.min(speechLog.length, 60);
   window.dispatchEvent(new Event("rin-speech-log"));
@@ -42,8 +45,7 @@ function getRecognitionCtor(): RecognitionCtor | null {
 }
 
 export const RECOGNITION_ERRORS: Record<string, string> = {
-  "not-allowed":
-    "マイクが許可されていません。Safari の設定で、このサイトのマイクを「許可」にしてください。",
+  "not-allowed": "マイクが許可されていません。Safari の設定で、このサイトのマイクを「許可」にしてください。",
   "service-not-allowed":
     "音声認識が使えません。iPad の「設定 > 一般 > キーボード > 音声入力」と「Siri」をオンにしてみてください。",
   "no-speech": "声が聞こえませんでした。もう一度ボタンを押して話してください。",
@@ -65,8 +67,7 @@ export type EnvInfo = {
 export function detectEnv(): EnvInfo {
   const ua = navigator.userAgent;
   // iPadOS 13 以降の Safari は Mac のふりをするので、タッチ点数で見分ける
-  const isIPad =
-    /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const isIPad = /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
   const isIPhone = /iPhone/.test(ua);
   const os = ua.match(/OS (\d+)_(\d+)(?:_(\d+))?/);
   const safari = ua.match(/Version\/([\d.]+)/);
@@ -93,8 +94,9 @@ export function useRecognition(onFinal: (text: string) => void) {
   }, [onFinal]);
 
   // やり直しのときに自分自身を呼ぶための参照
-  const beginRef = useRef<(retry: boolean) => void>(() => {});
-  const begin = useCallback((retry: boolean) => {
+  const beginRef = useRef<(retry: boolean, long?: boolean) => void>(() => {});
+  // long:間があいても止めず、しばらく黙ったら終える(家族の言葉が途中で切れていたため)
+  const begin = useCallback((retry: boolean, long = false) => {
     const Ctor = getRecognitionCtor();
     if (!Ctor) {
       setError("このブラウザは音声認識に対応していません。");
@@ -107,11 +109,27 @@ export function useRecognition(onFinal: (text: string) => void) {
     const rec = new Ctor();
     const startedAt = Date.now();
     rec.lang = "ja-JP";
-    rec.continuous = false;
+    rec.continuous = long;
     rec.interimResults = true;
+    // long のときは、確定した言葉をためておき、終わったときにまとめて渡す
+    let finalText = "";
+    let silence: ReturnType<typeof setTimeout> | undefined;
+    const SILENCE_MS = 2500;
+    const MAX_MS = 20000;
+    const maxTimer = long ? setTimeout(() => rec.stop(), MAX_MS) : undefined;
     const since = () => `+${Date.now() - startedAt}ms`;
-    logSpeech(`start${retry ? "(やり直し)" : ""} 読み上げ中=${"speechSynthesis" in window && speechSynthesis.speaking}`);
-    for (const type of ["audiostart", "soundstart", "speechstart", "speechend", "soundend", "audioend", "nomatch"]) {
+    logSpeech(
+      `start${retry ? "(やり直し)" : ""} 読み上げ中=${"speechSynthesis" in window && speechSynthesis.speaking}`,
+    );
+    for (const type of [
+      "audiostart",
+      "soundstart",
+      "speechstart",
+      "speechend",
+      "soundend",
+      "audioend",
+      "nomatch",
+    ]) {
       rec.addEventListener(type, () => logSpeech(`${type} ${since()}`));
     }
     rec.onstart = () => {
@@ -123,6 +141,19 @@ export function useRecognition(onFinal: (text: string) => void) {
     };
     rec.onresult = (e) => {
       if (recRef.current !== rec) return;
+      if (long) {
+        let fin = "";
+        let interim = "";
+        for (let i = 0; i < e.results.length; i++) {
+          if (e.results[i].isFinal) fin += e.results[i][0].transcript;
+          else interim += e.results[i][0].transcript;
+        }
+        finalText = fin;
+        setInterim(fin + interim);
+        clearTimeout(silence);
+        silence = setTimeout(() => rec.stop(), SILENCE_MS);
+        return;
+      }
       let text = "";
       let final = false;
       for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -138,14 +169,17 @@ export function useRecognition(onFinal: (text: string) => void) {
       // iOS は始めた直後に止められることがある(読み上げや別のタブとマイクを取り合うとき)。1回だけやり直す
       if (e.error === "aborted" && !retry && Date.now() - startedAt < 2000) {
         recRef.current = null;
-        setTimeout(() => beginRef.current(true), 400);
+        setTimeout(() => beginRef.current(true, long), 400);
         return;
       }
       setError(RECOGNITION_ERRORS[e.error] ?? `エラー:${e.error}`);
     };
     rec.onend = () => {
       logSpeech(`end ${since()}${recRef.current !== rec ? "(古い)" : ""}`);
+      clearTimeout(silence);
+      clearTimeout(maxTimer);
       if (recRef.current !== rec) return;
+      if (long && finalText.trim()) onFinalRef.current(finalText.trim());
       setListening(false);
       recRef.current = null;
     };
@@ -162,16 +196,19 @@ export function useRecognition(onFinal: (text: string) => void) {
     beginRef.current = begin;
   }, [begin]);
 
-  const start = useCallback(() => {
-    setError(null);
-    // 読み上げ中だった場合は止めて、少し待ってからマイクを使う(iOS で取り合いにならないように)
-    if ("speechSynthesis" in window && (speechSynthesis.speaking || speechSynthesis.pending)) {
-      speechSynthesis.cancel();
-      setTimeout(() => begin(false), 300);
-    } else {
-      begin(false);
-    }
-  }, [begin]);
+  const start = useCallback(
+    (opts: { long?: boolean } = {}) => {
+      setError(null);
+      // 読み上げ中だった場合は止めて、少し待ってからマイクを使う(iOS で取り合いにならないように)
+      if ("speechSynthesis" in window && (speechSynthesis.speaking || speechSynthesis.pending)) {
+        speechSynthesis.cancel();
+        setTimeout(() => begin(false, opts.long), 300);
+      } else {
+        begin(false, opts.long);
+      }
+    },
+    [begin],
+  );
 
   const stop = useCallback(() => recRef.current?.stop(), []);
 
@@ -201,8 +238,7 @@ export function useJapaneseVoices() {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   useEffect(() => {
     if (!("speechSynthesis" in window)) return;
-    const load = () =>
-      setVoices(speechSynthesis.getVoices().filter((v) => v.lang.startsWith("ja")));
+    const load = () => setVoices(speechSynthesis.getVoices().filter((v) => v.lang.startsWith("ja")));
     load();
     speechSynthesis.addEventListener("voiceschanged", load);
     return () => speechSynthesis.removeEventListener("voiceschanged", load);

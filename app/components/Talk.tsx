@@ -437,8 +437,9 @@ export function Talk() {
     if (rec.listening) {
       rec.stop();
     } else {
-      // start は読み上げ中(unlock の無音を含む)なら止めて少し待ってから聞き始める
-      rec.start();
+      // start は読み上げ中(unlock の無音を含む)なら止めて少し待ってから聞き始める。
+      // 家族の言葉は、間があいても途中で切らない(試用で「今の」「ちょうどいいよ」と切れていたため)
+      rec.start({ long: forFamily });
     }
     speaker.cancel();
   };
