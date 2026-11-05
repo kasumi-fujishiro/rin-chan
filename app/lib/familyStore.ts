@@ -16,7 +16,11 @@ export type Settings = {
   // LINE に送るときの合言葉(Cloudflare の RIN_APP_KEY と同じもの)と、伝言の返事を知らせるか
   lineKey?: string;
   notifyReplies?: boolean;
+  // LINE で伝言を送ってきた家族。LINE の表示名を、本人が分かる呼び方(「お母さん」など)に置き換える
+  lineSenders?: LineSender[];
 };
+
+export type LineSender = { userId: string; lineName: string; callName: string };
 
 export type VoiceSetting = { name: string; rate: number; pitch: number };
 export const DEFAULT_VOICE: VoiceSetting = { name: "", rate: 0.8, pitch: 1 };
@@ -44,11 +48,14 @@ export type Entry = {
 
 export type Spot = { roomId: string; x: number; y: number };
 
-// 家族からの伝言(家族が自分の声で録音したもの)。リンちゃんの声とは分けて、本人が押したときだけ流す
+// 家族からの伝言(家族が自分の声で録音したもの、または LINE で送った声か文字)。
+// リンちゃんの声とは分けて、本人が押したときだけ流す。文字だけの伝言はリンちゃんが読み上げる
 export type Message = {
   id: string;
   from: string;
-  audio: Blob;
+  audio?: Blob;
+  // LINE から届いた伝言の送り主
+  lineUserId?: string;
   createdAt: number;
   // 本人が最後に聞いた時刻。まだなら undefined
   heardAt?: number;
@@ -193,7 +200,7 @@ export async function shrinkPhoto(file: File, maxSide = 1200): Promise<Blob> {
 const BACKUP_FORMAT = "rin-family-backup";
 
 type BackupEntry = Omit<Entry, "photo"> & { photo?: string };
-type BackupMessage = Omit<Message, "audio"> & { audio: string };
+type BackupMessage = Omit<Message, "audio"> & { audio?: string };
 type Backup = {
   format: typeof BACKUP_FORMAT;
   version: 1;
@@ -222,7 +229,7 @@ export async function exportBackup(): Promise<File> {
     entries: await Promise.all(
       entries.map(async (e) => ({ ...e, photo: e.photo ? await blobToDataUrl(e.photo) : undefined })),
     ),
-    messages: await Promise.all(messages.map(async (m) => ({ ...m, audio: await blobToDataUrl(m.audio) }))),
+    messages: await Promise.all(messages.map(async (m) => ({ ...m, audio: m.audio ? await blobToDataUrl(m.audio) : undefined }))),
   };
   const date = new Date().toLocaleDateString("sv-SE"); // 2026-11-03 の形
   return new File([JSON.stringify(backup)], `rin-backup-${date}.json`, { type: "application/json" });
@@ -252,7 +259,7 @@ export async function importBackup(file: File): Promise<{ entries: number; messa
   );
   const messages: Message[] = await Promise.all(
     (backup.messages ?? [])
-      .filter((m) => m?.audio && m.from)
+      .filter((m) => (m?.audio || m?.text) && m.from)
       .map(async (m) => ({
         id: m.id || crypto.randomUUID(),
         from: m.from,
@@ -261,7 +268,8 @@ export async function importBackup(file: File): Promise<{ entries: number; messa
         text: m.text,
         reply: m.reply,
         doneAt: m.doneAt,
-        audio: await (await fetch(m.audio)).blob(),
+        lineUserId: m.lineUserId,
+        audio: m.audio ? await (await fetch(m.audio)).blob() : undefined,
       })),
   );
   const db = await openDb();

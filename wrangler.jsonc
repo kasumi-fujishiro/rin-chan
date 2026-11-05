@@ -8,6 +8,8 @@
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
-  }
-  // ANTHROPIC_API_KEY と RIN_PROFILE_JSON は `wrangler secret put` で入れる(リポジトリには書かない)
+  },
+  // LINE で家族が送った伝言を、iPad が受け取るまでだけ置く(受け取ったら消す。受け取られなくても3日で消える)
+  "kv_namespaces": [{ "binding": "RIN_INBOX", "id": "50b4cf4f1ff34f0ea29822684eba453e" }]
+  // ANTHROPIC_API_KEY・LINE_CHANNEL_ACCESS_TOKEN・LINE_CHANNEL_SECRET・RIN_APP_KEY は `wrangler secret put` で入れる(リポジトリには書かない)
 }

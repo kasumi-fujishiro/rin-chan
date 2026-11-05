@@ -253,7 +253,14 @@ export function useSpeaker() {
     (
       text: string,
       // lead:本題の前に、別に読み上げる呼びかけ(「ハルさん。」のあとに少し間があく)
-      opts: { voice?: SpeechSynthesisVoice; rate?: number; pitch?: number; lead?: string } = {},
+      // onEnd:読み終えたとき(途中で止められたときは呼ばない)
+      opts: {
+        voice?: SpeechSynthesisVoice;
+        rate?: number;
+        pitch?: number;
+        lead?: string;
+        onEnd?: () => void;
+      } = {},
     ) => {
       if (!("speechSynthesis" in window)) return;
       speechSynthesis.cancel();
@@ -274,6 +281,7 @@ export function useSpeaker() {
       last.onend = () => {
         logSpeech("読み上げ終了");
         setSpeaking(false);
+        opts.onEnd?.();
       };
       for (const u of parts) {
         u.onerror = (e) => {

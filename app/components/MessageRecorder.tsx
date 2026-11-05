@@ -152,7 +152,8 @@ export function MessageRecorder({ defaultFrom }: { defaultFrom: string }) {
                 ? `聞きました(${new Date(m.heardAt).toLocaleString("ja-JP")})`
                 : "まだ聞いていません"}
             </span>
-            <AudioPlayer blob={m.audio} />
+            {m.audio && <AudioPlayer blob={m.audio} />}
+            {m.lineUserId && <span className="text-zinc-500">(LINE から)</span>}
             {m.text && <span className="w-full text-zinc-700">字幕:{m.text}</span>}
             {m.reply && <span className="w-full font-bold text-sky-800">ご本人の返事:{m.reply}</span>}
             {m.doneAt && !m.reply && <span className="w-full text-zinc-500">「わかった」を押しました</span>}

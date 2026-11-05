@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Settings } from "../lib/familyStore";
+import { listMessages, putMessage, type LineSender, type Settings } from "../lib/familyStore";
 
 type Status = { lineReady: boolean; keyConfigured: boolean } | null;
 
@@ -11,12 +11,24 @@ export function LineSettings({
   onSave,
 }: {
   settings: Settings;
-  onSave: (patch: Pick<Settings, "lineKey" | "notifyReplies">) => Promise<void>;
+  onSave: (patch: Pick<Settings, "lineKey" | "notifyReplies" | "lineSenders">) => Promise<void>;
 }) {
   const [status, setStatus] = useState<Status>(null);
   const [key, setKey] = useState(settings.lineKey ?? "");
   const [notify, setNotify] = useState(settings.notifyReplies ?? true);
   const [message, setMessage] = useState("");
+  const [senders, setSenders] = useState<LineSender[]>(settings.lineSenders ?? []);
+
+  // 呼び名を決めたら、まだ終わっていない伝言の「誰から」も直す
+  const saveSenders = async () => {
+    const cleaned = senders.map((s) => ({ ...s, callName: s.callName.trim() }));
+    await onSave({ lineSenders: cleaned });
+    for (const m of await listMessages()) {
+      const s = cleaned.find((x) => x.userId === m.lineUserId);
+      if (s?.callName && !m.doneAt && m.from !== s.callName) await putMessage({ ...m, from: s.callName });
+    }
+    setMessage("呼び名を保存しました");
+  };
 
   useEffect(() => {
     fetch("/api/report")
@@ -102,6 +114,35 @@ export function LineSettings({
           保存して、試しに送る
         </button>
       </div>
+      <h3 className="mt-2 text-xl font-bold">LINE から伝言を送る</h3>
+      <p className="text-lg text-zinc-600">
+        公式アカウントに声(ボイスメッセージ)か文字を送ると、この iPad に伝言として届きます(1分ごとに取りに行きます)。届くまでの間だけサーバーに置き、受け取ったらすぐ消します。受け取られなくても3日で消えます。
+      </p>
+      {senders.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <p className="text-lg">送ってくれた人を、ご本人が分かる呼び方にしてください(例:お母さん)。</p>
+          {senders.map((s, i) => (
+            <label key={s.userId} className="flex flex-wrap items-center gap-3 text-lg">
+              <span className="min-w-32 text-zinc-600">LINE:{s.lineName || "(名前なし)"}</span>
+              <input
+                className="rounded-xl border-2 p-2 text-xl"
+                placeholder="呼び方"
+                value={s.callName}
+                onChange={(e) =>
+                  setSenders((list) => list.map((x, j) => (j === i ? { ...x, callName: e.target.value } : x)))
+                }
+              />
+            </label>
+          ))}
+          <button
+            type="button"
+            onClick={saveSenders}
+            className="self-start rounded-2xl bg-amber-600 px-6 py-3 text-xl text-white"
+          >
+            呼び方を保存
+          </button>
+        </div>
+      )}
       {message && <p className="text-lg">{message}</p>}
     </section>
   );

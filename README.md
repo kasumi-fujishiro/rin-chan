@@ -20,7 +20,7 @@ Built with Claude: Japan 2026 の作品です。
 | **「あれ」から写真で選んで伝える** | 「ほら、あれ、歯にはさまったのを取る…」→ 会話・時間帯・登録から候補を推測し、写真2〜3枚で「これですか?」。外れたら「物・人・場所」の大きな3ボタン |
 | **聞き返しへの言い直し** | 1回目は短く区切ってゆっくり、2回目は一言にして大きな文字で、3回目は「大丈夫ですよ。あとで一緒に見ましょうね」とやさしく終える |
 | **リンちゃんから話しかける** | デイサービスの日の帰宅後に「おかえりなさい」と場所の写真で声をかける。会話がないときは、家族が登録した思い出の話題をきっかけにする |
-| **家族からの伝言** | 家族が自分の声で録音した伝言を、本人が押したときに字幕つきで流す。聞いたあとの返事を残し、家族に伝える(リンちゃんが家族の声で話すことはしない) |
+| **家族からの伝言** | 家族が自分の声で録音した伝言、または **LINE で送った声や文字**を、本人が押したときに流す(文字はリンちゃんが読み上げる)。聞いたあとの返事を残し、家族に伝える(リンちゃんが家族の声で話すことはしない) |
 | **ご家族が伝える** | そばの家族が話した言葉(「これ食べなさい、体にいいから」)を、意味は変えずに短く・やわらかく言い直し(「これ、体にいいですから、ひとくち食べませんか」)、要点を大きな文字と写真で見せる |
 | **置きっぱなしで使える** | テレビや周りの声、画面の文字を読み上げた声には返事をしない。画面を消さず、日付・時刻・デイサービスの日を出す |
 
@@ -93,6 +93,7 @@ flowchart LR
 - 写真・声の伝言・試用の記録は iPad の中だけ。写真は Claude に送らない
 - LINE への報告は、家族が内容を確認して「送る」を押したときだけ送り、サーバーには残さない
 - サーバーは受け取った文字を Claude に渡すだけで、何も保存しない。API キーは wrangler の secret
+- 例外は **LINE から届いた伝言** だけ。iPad が取りに来るまで Cloudflare KV に置き、受け取ったらすぐ消す。受け取られなくても3日で消える(LINE の Webhook は iPad に直接届かないため)
 - バックアップは1つのファイルに書き出し、家族が自分の端末に保存する
 - リポジトリには架空のサンプル(`samples/`)とイラストだけを置く
 
@@ -118,8 +119,10 @@ npm run deploy
 npx wrangler secret put LINE_CHANNEL_ACCESS_TOKEN   # チャネルアクセストークン(長期)
 npx wrangler secret put LINE_TO                     # (任意)送り先のユーザー ID。入れなければ、友だち追加した全員に送る
 npx wrangler secret put RIN_APP_KEY                 # 合言葉。iPad の家族の登録画面にも同じものを入れる
+npx wrangler secret put LINE_CHANNEL_SECRET         # (LINE から伝言を送るとき)チャネルシークレット
 ```
 - LINE への送信は、合言葉(`RIN_APP_KEY`)が合うときだけ行います。URL を知っている人が勝手に家族へ送れないようにするためです
+- LINE から伝言を送るには、LINE Developers の Messaging API 設定で Webhook URL を `https://<あなたのドメイン>/api/line/webhook` にして「Webhook の利用」をオンにし、LINE Official Account Manager の応答設定で「応答メッセージ」をオフにします。KV は `npx wrangler kv namespace create rin-inbox` で作り、`wrangler.jsonc` の `RIN_INBOX` に ID を入れます。届いた伝言は、iPad が1分ごとに合言葉つきで取りに行きます
 - 家族の登録がないときは `samples/profile.json` の架空のデータで答えます
 
 ## iPad で使うときの注意
@@ -143,6 +146,9 @@ app/
   api/guess           「あれ」の推測(Haiku + Structured Outputs)
   api/dictionary      言葉の辞書の候補(Sonnet + Structured Outputs)
   api/report          家族への報告(Sonnet)と LINE への送信
+  api/notify          伝言への返事を LINE に知らせる
+  api/line/webhook    LINE から届いた伝言を一時的に置く(署名を確かめる)
+  api/inbox           iPad が LINE からの伝言を取りに来る(合言葉つき、受け取ったら消す)
   api/relay           家族の言葉の言い直し(Haiku + Structured Outputs)
   lib/prompt.ts       リンちゃんの話し方(システムプロンプト)
   lib/familyStore.ts  iPad の中の保存とバックアップ

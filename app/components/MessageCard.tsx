@@ -12,6 +12,7 @@ export function MessageCard({
   onPlay,
   onHeard,
   onDone,
+  speakText,
 }: {
   message: Message;
   // 「人」に同じ呼び方で登録されていれば、その写真を出す
@@ -19,6 +20,8 @@ export function MessageCard({
   onPlay: () => void;
   onHeard: () => void;
   onDone: () => void;
+  // 文字だけの伝言(LINE から)は、リンちゃんの声で読み上げる
+  speakText: (text: string, onEnd: () => void) => void;
 }) {
   const [playing, setPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -29,6 +32,16 @@ export function MessageCard({
   const play = () => {
     onPlay();
     audioRef.current?.pause();
+    if (!message.audio) {
+      setPlaying(true);
+      speakText(`${message.from}からです。${message.text ?? ""}`, () => {
+        setPlaying(false);
+        onHeard();
+      });
+      // 読み上げが止められても、押せなくならないように
+      setTimeout(() => setPlaying(false), 30_000);
+      return;
+    }
     const url = URL.createObjectURL(message.audio);
     const audio = new Audio(url);
     audioRef.current = audio;

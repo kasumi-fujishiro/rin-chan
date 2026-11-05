@@ -26,6 +26,7 @@ import {
 import type { Kind, Profile } from "../lib/types";
 import { usePhotoUrl } from "../lib/usePhotoUrl";
 import { useWakeLock } from "../lib/useWakeLock";
+import { pullLineMessages } from "../lib/lineInbox";
 import { freshIfStale, loadConversation, saveConversation, type Turn } from "../lib/conversation";
 import { markRinPromptUsed, pickRinPrompt, type RinPrompt } from "../lib/rinPrompt";
 
@@ -350,6 +351,36 @@ export function Talk() {
   useEffect(() => {
     latest.current = { rec, pick, thinking };
   });
+  // LINE で家族が送った伝言を、1分ごとに取りに行く(合言葉が入っているときだけ)
+  const lineKey = settings?.lineKey;
+  useEffect(() => {
+    if (!lineKey) return;
+    let stopped = false;
+    const pull = async () => {
+      try {
+        const latestSettings = await getSettings();
+        const added = await pullLineMessages(latestSettings);
+        if (stopped || added.length === 0) return;
+        setMessages(await listMessages());
+        setSettings(latestSettings);
+        // 届いたことを、そっと声でも知らせる(画面を見ていないことがあるため)
+        const { rec, pick, thinking } = latest.current;
+        if (!rec.listening && !pick && !thinking && !speechSynthesis.speaking) {
+          say(`${added[0].from}から、伝言が届きましたよ。`, 1, false);
+        }
+      } catch {
+        // つながらないときは、次の回にまた取りに行く
+      }
+    };
+    void pull();
+    const timer = setInterval(pull, 60_000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineKey]);
+
   // 伝言は、終えていないもののうち、まだ聞いていない新しいものを先に出す(試用で、ずっと出ていて何度も押していたため)
   const openMessages = messages.filter((m) => !m.doneAt);
   const message = openMessages.find((m) => !m.heardAt) ?? openMessages[0];
@@ -626,6 +657,16 @@ export function Talk() {
           onDone={() => {
             messageReplyRef.current = null;
             void finishMessage(message);
+          }}
+          speakText={(text, onEnd) => {
+            listenAfterRef.current = false;
+            speaker.speak(text, {
+              voice,
+              rate: voiceSetting.rate,
+              pitch: voiceSetting.pitch,
+              lead: settings?.userCallName || undefined,
+              onEnd,
+            });
           }}
         />
       )}
