@@ -33,7 +33,7 @@ export function MessageCard({
 
   useEffect(
     () => () => {
-      if (audioRef.current && !audioRef.current.paused) setAudioSession("auto");
+      if (audioRef.current && !audioRef.current.paused) setAudioSession("play-and-record");
       audioRef.current?.pause();
     },
     [],
@@ -58,7 +58,7 @@ export function MessageCard({
     const done = () => {
       setPlaying(false);
       URL.revokeObjectURL(url);
-      setAudioSession("auto");
+      setAudioSession("play-and-record");
     };
     audio.onended = () => {
       done();

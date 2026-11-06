@@ -36,8 +36,8 @@ export function logSpeech(message: string) {
 }
 
 // iOS はマイクを一度使うと、音の出口が通話用に変わって再生の音が小さくなる。
-// 伝言を流す間だけ再生用に戻し、終わったら iPad まかせに戻す(マイクを使えるように)
-export function setAudioSession(type: "playback" | "auto") {
+// 伝言を流す間だけ再生用にし、終わったらすぐマイクも使える形にする(返事を聞き逃さないように)
+export function setAudioSession(type: "playback" | "play-and-record") {
   const session = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
   if (!session) return;
   try {
@@ -138,6 +138,25 @@ export function useRecognition(onFinal: (text: string) => void) {
     const maxTimer = long ? setTimeout(() => rec.stop(), MAX_MS) : undefined;
     let fresh: ReturnType<typeof setTimeout> | undefined;
     let gotResult = false;
+    let restarting = false;
+    // マイクを閉じ終えてから聞き直す(閉じる前に始めると、iPad で動かないまま止まっていたため)
+    const relaunch = () => {
+      if (!restarting || recRef.current !== rec) return;
+      restarting = false;
+      recRef.current = null;
+      setTimeout(() => {
+        if (stoppedRef.current) setListening(false);
+        else beginRef.current(false, long, persist);
+      }, 300);
+    };
+    // いつまでも始まらないときは手放す(「聞いている」のまま押せなくならないように)
+    const noStart = setTimeout(() => {
+      if (recRef.current !== rec) return;
+      logSpeech("始まらないので手放す");
+      recRef.current = null;
+      rec.abort();
+      setListening(false);
+    }, 6000);
     const since = () => `+${Date.now() - startedAt}ms`;
     logSpeech(
       `start${retry ? "(やり直し)" : ""} 読み上げ中=${"speechSynthesis" in window && speechSynthesis.speaking}`,
@@ -155,6 +174,7 @@ export function useRecognition(onFinal: (text: string) => void) {
     }
     rec.onstart = () => {
       logSpeech(`onstart ${since()}`);
+      clearTimeout(noStart);
       if (recRef.current !== rec) return;
       setError(null);
       setInterim("");
@@ -163,7 +183,9 @@ export function useRecognition(onFinal: (text: string) => void) {
         fresh = setTimeout(() => {
           if (recRef.current !== rec || gotResult || stoppedRef.current) return;
           logSpeech("聞き直し(再生の直後)");
-          beginRef.current(false, long, persist);
+          restarting = true;
+          rec.abort();
+          setTimeout(relaunch, 1000);
         }, freshMs);
       }
     };
@@ -194,7 +216,7 @@ export function useRecognition(onFinal: (text: string) => void) {
     };
     rec.onerror = (e) => {
       logSpeech(`error=${e.error} ${e.message ?? ""} ${since()}${recRef.current !== rec ? "(古い)" : ""}`);
-      if (recRef.current !== rec) return;
+      if (recRef.current !== rec || restarting) return;
       // iOS は始めた直後に止められることがある(読み上げや別のタブとマイクを取り合うとき)。1回だけやり直す
       if (e.error === "aborted" && !retry && Date.now() - startedAt < 2000) {
         recRef.current = null;
@@ -208,6 +230,11 @@ export function useRecognition(onFinal: (text: string) => void) {
       clearTimeout(silence);
       clearTimeout(maxTimer);
       clearTimeout(fresh);
+      clearTimeout(noStart);
+      if (restarting) {
+        relaunch();
+        return;
+      }
       if (recRef.current !== rec) return;
       if (long && finalText.trim()) onFinalRef.current(finalText.trim());
       if (persist && !retry && !gotResult && !stoppedRef.current && Date.now() - startedAt < 2000) {
@@ -225,6 +252,7 @@ export function useRecognition(onFinal: (text: string) => void) {
       rec.start();
     } catch (err) {
       logSpeech(`start例外 ${String(err)}`);
+      clearTimeout(noStart);
       setError(`開始できませんでした:${String(err)}`);
     }
   }, []);
@@ -249,7 +277,16 @@ export function useRecognition(onFinal: (text: string) => void) {
 
   const stop = useCallback(() => {
     stoppedRef.current = true;
-    recRef.current?.stop();
+    const rec = recRef.current;
+    rec?.stop();
+    // 止める合図に iPad が答えないときも、必ず止まった画面に戻す
+    setTimeout(() => {
+      if (recRef.current !== rec) return;
+      logSpeech("止まらないので手放す");
+      recRef.current = null;
+      rec?.abort();
+      setListening(false);
+    }, 1000);
   }, []);
 
   // 呼びかけモード:画面を「聞いている」にせず、まわりの声を聞き続ける。
