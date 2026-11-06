@@ -467,7 +467,7 @@ export function Talk() {
       if (messageReplyRef.current !== updated || rec.listening || pick || thinking) return;
       setAutoListening(true);
       setRelayMode(false);
-      rec.start({ persist: true });
+      rec.start({ persist: true, freshMs: m.audio ? 800 : 0 });
       if (retry) setTimeout(() => listen(false), 8000);
     };
     setTimeout(() => listen(true), 300);

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Entry, Message } from "../lib/familyStore";
+import { setAudioSession } from "../lib/speech";
 import { usePhotoUrl } from "../lib/usePhotoUrl";
 
 // 家族からの伝言。本人が押したときだけ、家族の声で流し、字幕を大きく出す。
@@ -30,7 +31,13 @@ export function MessageCard({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const photo = usePhotoUrl(person?.photo);
 
-  useEffect(() => () => audioRef.current?.pause(), []);
+  useEffect(
+    () => () => {
+      if (audioRef.current && !audioRef.current.paused) setAudioSession("auto");
+      audioRef.current?.pause();
+    },
+    [],
+  );
 
   const play = () => {
     onPlay();
@@ -51,6 +58,7 @@ export function MessageCard({
     const done = () => {
       setPlaying(false);
       URL.revokeObjectURL(url);
+      setAudioSession("auto");
     };
     audio.onended = () => {
       done();
@@ -58,6 +66,7 @@ export function MessageCard({
     };
     audio.onerror = done;
     setPlaying(true);
+    setAudioSession("playback");
     void audio.play().catch(done);
   };
 
