@@ -41,6 +41,7 @@ Built with Claude: Japan 2026 の作品です。
 | 家族の言葉の言い直し | `/api/relay` | `claude-haiku-5-5` | 意味は変えず、命令や責める言い方をやわらげる。本人の言い方の辞書を使い、「それ」は直前の会話ではっきり分かるときだけ置きかえる |
 | テレビの音の判定 | `/api/talk` の中 | `claude-haiku-5-5` | 呼び出しを増やさず、会話のプロンプトの中で「本人への言葉でない」ときだけ印を返させ、画面は返事をしない |
 | 言葉の辞書の候補 | `/api/dictionary` | `claude-sonnet-5-5` | 記録の読み解きは Sonnet。Structured Outputs で根拠つきの候補を返し、断られたときはサーバー側のフォールバック(`fallbacks: "default"`)でやり直す |
+| 今日のメモ | `/api/digest` | `claude-sonnet-5-5` | 30分話さず会話が区切れたら、本人の話・家族から・聞かれたことに分けて短くまとめる。本人の話は事実として扱わず、「さっき」と持ち出さない |
 | 家族への報告 | `/api/report` | `claude-sonnet-5-5` | 本人の話と記録上の事実を分けて要約。診断・評価・助言は書かない。送るのは家族が確認した文だけ |
 
 ### 返事の質のテスト
@@ -147,6 +148,7 @@ app/
   api/dictionary      言葉の辞書の候補(Sonnet + Structured Outputs)
   api/report          家族への報告(Sonnet)と LINE への送信
   api/notify          伝言への返事を LINE に知らせる
+  api/digest          会話の区切りで、今日これまでの話をメモにする(Sonnet。メモは iPad にだけ残す)
   api/line/webhook    LINE から届いた伝言を一時的に置く(署名を確かめる)
   api/inbox           iPad が LINE からの伝言を取りに来る(合言葉つき、受け取ったら消す)
   api/relay           家族の言葉の言い直し(Haiku + Structured Outputs)

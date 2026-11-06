@@ -7,12 +7,12 @@ const base = process.argv[2] ?? "http://localhost:3000";
 const profile = JSON.parse(await readFile(new URL("../samples/profile.json", import.meta.url), "utf8"));
 const family = profile.familyCallName;
 
-async function talk(turns, reask = 0) {
+async function talk(turns, reask = 0, today = "") {
   const messages = turns.map((content, i) => ({ role: i % 2 === 0 ? "user" : "assistant", content }));
   const res = await fetch(`${base}/api/talk`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages, reask, profile }),
+    body: JSON.stringify({ messages, reask, profile, today }),
   });
   const data = await res.json();
   // テレビなどの声として返事をしなかったときは、印の文字を返す
@@ -170,6 +170,30 @@ cases.push(
     name: "本人の言いかけには返事をする",
     run: () => talk(["あれ、ほら、あれよ"]),
     checks: [["返事あり", (r) => r !== "(返事なし)" && r.length > 0]],
+  },
+);
+
+const today = `本人の話:孫が昨日来たと話していた
+家族から:お母さんが夕方に行くと伝えた
+聞かれたこと:眼鏡の場所`;
+cases.push(
+  {
+    name: "今日のメモ:家族の話は聞かれたら答える",
+    run: () => talk(["今日、誰か来るの?"], 0, today),
+    checks: [["夕方に来ると答える", (r) => /夕方/.test(r)]],
+  },
+  {
+    name: "今日のメモ:同じ質問に「今日もう」と言わない",
+    run: () => talk(["眼鏡はどこ"], 0, today),
+    checks: [
+      ["場所を答える", (r) => /居間|テーブル|青いケース/.test(r)],
+      ["前に聞かれたと言わない", (r) => !/今日もう|前にも|また/.test(r)],
+    ],
+  },
+  {
+    name: "今日のメモ:本人の話を事実にしない",
+    run: () => talk(["孫は昨日来たんだっけ"], 0, today),
+    checks: [["来たと言い切らない", (r) => !/昨日(いらっしゃ|来ま|来られ)/.test(r) || /聞いて/.test(r)]],
   },
 );
 

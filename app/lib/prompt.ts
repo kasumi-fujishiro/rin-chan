@@ -72,3 +72,14 @@ export function stripLeadingName(text: string, p: Profile): string {
 export function reaskEndMessage(p: Profile): string {
   return `大丈夫ですよ。あとで${p.familyCallName}と一緒に見ましょうね。`;
 }
+
+// 今日のメモの扱い。流れを続けるためだけに使い、本人に「さっき」と持ち出さない
+export const todayNote = (today: string) => `<today>
+${today}
+</today>
+これは今日これまでの話のメモです。話の流れを続けるためだけに使ってください。
+- 自分からこのメモの話を持ち出しません。「さっき」「今日もう」と言いません
+- 同じことを聞かれたら、初めて聞かれたように同じ調子で答えます
+- 「本人の話:」は事実かどうか分かりません。答えの根拠にしません
+- 「家族から:」は、聞かれたら答えてかまいません
+- 物の場所は、メモではなく登録の内容だけで答えます`;

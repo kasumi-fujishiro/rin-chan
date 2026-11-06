@@ -27,7 +27,17 @@ import type { Kind, Profile } from "../lib/types";
 import { usePhotoUrl } from "../lib/usePhotoUrl";
 import { useWakeLock } from "../lib/useWakeLock";
 import { pullLineMessages } from "../lib/lineInbox";
-import { freshIfStale, loadConversation, saveConversation, type Turn } from "../lib/conversation";
+import {
+  clearConversation,
+  freshIfStale,
+  GAP_MS,
+  loadConversation,
+  loadToday,
+  saveConversation,
+  saveToday,
+  takeStaleConversation,
+  type Turn,
+} from "../lib/conversation";
 import { markRinPromptUsed, pickRinPrompt, type RinPrompt } from "../lib/rinPrompt";
 
 // 本人の言葉と返事に名前が出てきた登録を探す(長い名前を優先)。その写真を大きく見せる
@@ -47,6 +57,22 @@ function formatClock(d: Date) {
   const date = d.toLocaleDateString("ja-JP", { month: "long", day: "numeric", weekday: "short" });
   const h = d.getHours();
   return `${date} ${h < 12 ? "午前" : "午後"}${h % 12 || 12}時${d.getMinutes()}分`;
+}
+
+// 区切れた会話を今日のメモにまとめる。失敗しても会話は止めない
+async function digest(turns: Turn[], profile: Profile | null) {
+  if (turns.length === 0) return;
+  try {
+    const res = await fetch("/api/digest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ turns, previous: loadToday(), profile }),
+    });
+    const { summary } = (await res.json()) as { summary?: string };
+    if (summary) saveToday(summary);
+  } catch {
+    // 次の区切りでまとめ直す
+  }
 }
 
 export function Talk() {
@@ -108,13 +134,16 @@ export function Talk() {
       setMessages(msgs);
       setSettings(settings);
       if (settings?.voice) setVoiceSetting(settings.voice);
+      const nextProfile = toProfile(settings, list);
+      // 閉じている間に区切れた会話は、今日のメモにまとめておく
+      void digest(takeStaleConversation(), nextProfile);
       // 30分以内に話していたら、再読み込みしても会話の流れを続ける
       const restored = loadConversation();
       if (restored.length) {
         setHistory(restored);
         setLastActivity(Date.now());
       }
-      setProfile(toProfile(settings, list));
+      setProfile(nextProfile);
       void requestPersist();
     })();
   }, []);
@@ -145,7 +174,7 @@ export function Talk() {
         const res = await fetch("/api/talk", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages, reask, profile }),
+          body: JSON.stringify({ messages, reask, profile, today: loadToday() }),
         });
         const data = (await res.json()) as { reply?: string; ignored?: boolean };
         ignored = !!data.ignored;
@@ -203,7 +232,8 @@ export function Talk() {
         body: JSON.stringify({
           heard,
           kind,
-          recent: history.slice(-6),
+          // 30分以上前の話題は手がかりにしない。家族が伝えた言葉や伝言は、会話に入っているので手がかりになる
+          recent: freshIfStale(history, lastActivity).slice(-6),
           profile,
         }),
       });
@@ -216,7 +246,7 @@ export function Talk() {
         .filter((e): e is Entry => !!e);
       return { kind: data.kind, candidates: found };
     },
-    [history, profile, entries],
+    [history, lastActivity, profile, entries],
   );
 
   const showPhotos = useCallback(
@@ -544,6 +574,14 @@ export function Talk() {
     return () => clearInterval(id);
   }, []);
   // まだ話していないか、2分以上会話がないときだけ、思い出の話題を出す
+  // 30分話さなかったら、ここまでの会話を今日のメモにまとめて、新しい会話にする
+  useEffect(() => {
+    if (!lastActivity || !history.length || now - lastActivity <= GAP_MS) return;
+    void digest(history, profile);
+    clearConversation();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHistory([]);
+  }, [now, lastActivity, history, profile]);
   const idle = history.length === 0 || now - lastActivity > 120_000;
   const rinPrompt = now ? pickRinPrompt(settings, entries, new Date(now), idle) : null;
 

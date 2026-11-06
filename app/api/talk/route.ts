@@ -7,6 +7,7 @@ import {
   REASK_INSTRUCTIONS,
   reaskEndMessage,
   stripLeadingName,
+  todayNote,
 } from "../../lib/prompt";
 
 // 返事の速さを優先して Haiku を使う(CLAUDE.md の技術構成)
@@ -18,6 +19,8 @@ type TalkRequest = {
   reask: 0 | 1 | 2 | 3;
   // iPad に保存された家族の登録内容(写真は含まない)
   profile?: unknown;
+  // 今日これまでの話のメモ(iPad に残している)
+  today?: unknown;
 };
 
 export async function POST(request: Request) {
@@ -41,7 +44,8 @@ export async function POST(request: Request) {
     hour: "numeric",
     minute: "2-digit",
   });
-  const turnNote = [`今は ${now} です。`, reask > 0 ? REASK_INSTRUCTIONS[reask as 1 | 2] : ""]
+  const today = typeof body.today === "string" ? body.today.slice(0, 500) : "";
+  const turnNote = [`今は ${now} です。`, today ? todayNote(today) : "", reask > 0 ? REASK_INSTRUCTIONS[reask as 1 | 2] : ""]
     .filter(Boolean)
     .join("\n");
 
