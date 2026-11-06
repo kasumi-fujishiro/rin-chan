@@ -460,17 +460,14 @@ export function Talk() {
     // 聞き終わったら、そのまま返事を聞き取る(試用で、押す前に返事をしてしまっていたため)。
     // 本人はすぐ返事をするので、保存などを待たず、マイクを先に用意する
     messageReplyRef.current = updated;
-    // 始まるまで数秒かかることがある。途中でやり直すと最初からになるので、長く待っても始まらないときだけ試す
-    const listen = (retry: boolean) => {
-      if (retry) setWakeHold(false);
+    setTimeout(() => {
+      setWakeHold(false);
       const { rec, pick, thinking } = latest.current;
       if (messageReplyRef.current !== updated || rec.listening || pick || thinking) return;
       setAutoListening(true);
       setRelayMode(false);
-      rec.start({ persist: true, freshMs: m.audio ? 800 : 0 });
-      if (retry) setTimeout(() => listen(false), 8000);
-    };
-    setTimeout(() => listen(true), 300);
+      rec.start({ persist: true });
+    }, 300);
     void saveMessage(updated);
     // リンちゃんも伝言の中身を知っておく(あとで「何て言ってた?」と聞かれたときのため)
     if (m.text)
@@ -831,6 +828,7 @@ export function Talk() {
             setTimeout(() => setWakeHold(false), 200_000);
           }}
           onHeard={() => heardMessage(message)}
+          warmMic={rec.warm}
           onDone={() => {
             messageReplyRef.current = null;
             void finishMessage(message);

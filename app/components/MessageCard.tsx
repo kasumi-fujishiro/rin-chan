@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Entry, Message } from "../lib/familyStore";
-import { setAudioSession } from "../lib/speech";
+import { isMicWarm } from "../lib/speech";
 import { usePhotoUrl } from "../lib/usePhotoUrl";
 
 // 家族からの伝言。本人が押したときだけ、家族の声で流し、字幕を大きく出す。
@@ -14,6 +14,7 @@ export function MessageCard({
   onHeard,
   onDone,
   speakText,
+  warmMic,
   slim = false,
 }: {
   message: Message;
@@ -24,6 +25,8 @@ export function MessageCard({
   onDone: () => void;
   // 文字だけの伝言(LINE から)は、リンちゃんの声で読み上げる
   speakText: (text: string, onEnd: () => void) => void;
+  // 声を流す前に、マイクを一度動かしておく(そのあとの返事を聞き取れるように)
+  warmMic: () => Promise<void>;
   // リンちゃんの返事や写真が一緒に出ているときは、1行にしてボタンが画面の外に出ないようにする
   slim?: boolean;
 }) {
@@ -31,13 +34,7 @@ export function MessageCard({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const photo = usePhotoUrl(person?.photo);
 
-  useEffect(
-    () => () => {
-      if (audioRef.current && !audioRef.current.paused) setAudioSession("play-and-record");
-      audioRef.current?.pause();
-    },
-    [],
-  );
+  useEffect(() => () => audioRef.current?.pause(), []);
 
   const play = () => {
     onPlay();
@@ -58,16 +55,29 @@ export function MessageCard({
     const done = () => {
       setPlaying(false);
       URL.revokeObjectURL(url);
-      setAudioSession("play-and-record");
     };
-    audio.onended = () => {
-      done();
-      onHeard();
+    const begin = () => {
+      audio.onended = () => {
+        done();
+        onHeard();
+      };
+      audio.onerror = done;
+      void audio.play().catch(done);
     };
-    audio.onerror = done;
     setPlaying(true);
-    setAudioSession("playback");
-    void audio.play().catch(done);
+    if (isMicWarm()) {
+      begin();
+      return;
+    }
+    // マイクの準備を待つ間に「押した」扱いが切れないよう、押した瞬間に音なしで再生を始めておく
+    audio.muted = true;
+    void audio.play().catch(() => {});
+    void warmMic().then(() => {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.muted = false;
+      begin();
+    });
   };
 
   const oneLine = slim && !playing;

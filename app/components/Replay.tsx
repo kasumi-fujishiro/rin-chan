@@ -298,6 +298,7 @@ export function Replay() {
       )}
       {view.message && !view.pick && !view.listening && !view.thinking && (
         <MessageCard
+          warmMic={() => Promise.resolve()}
           message={view.message}
           onPlay={() => {}}
           onHeard={() => {}}
