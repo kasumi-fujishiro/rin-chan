@@ -2,8 +2,85 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Entry, Message } from "../lib/familyStore";
-import { isMicWarm } from "../lib/speech";
 import { usePhotoUrl } from "../lib/usePhotoUrl";
+
+type Stop = () => void;
+
+// 声は Web Audio で流す。音の小さい録音も聞こえるように大きさをそろえ、終わったら音の経路を閉じる
+function playVoice(blob: Blob, onEnd: () => void, onFail: () => void): Stop {
+  const Ctx =
+    window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!Ctx) return playWithElement(blob, onEnd, onFail);
+  // 押した瞬間に作らないと、iPad で音が出ない
+  const ctx = new Ctx();
+  void ctx.resume();
+  let stopped = false;
+  let finished = false;
+  let source: AudioBufferSourceNode | undefined;
+  let limit: ReturnType<typeof setTimeout> | undefined;
+  let fallback: Stop | undefined;
+  const close = () => {
+    clearTimeout(limit);
+    if (ctx.state !== "closed") void ctx.close();
+  };
+  const finish = () => {
+    if (finished || stopped) return;
+    finished = true;
+    close();
+    onEnd();
+  };
+  blob
+    .arrayBuffer()
+    .then((data) => ctx.decodeAudioData(data))
+    .then((buffer) => {
+      if (stopped) return;
+      let peak = 0;
+      for (let c = 0; c < buffer.numberOfChannels; c++) {
+        const samples = buffer.getChannelData(c);
+        for (let i = 0; i < samples.length; i++) peak = Math.max(peak, Math.abs(samples[i]));
+      }
+      const gain = ctx.createGain();
+      gain.gain.value = peak > 0 ? Math.min(0.95 / peak, 6) : 1;
+      source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(gain).connect(ctx.destination);
+      source.onended = finish;
+      source.start();
+      // 終わりの知らせが来なくても、押せなくならないように
+      limit = setTimeout(finish, (buffer.duration + 2) * 1000);
+    })
+    .catch(() => {
+      close();
+      if (!stopped) fallback = playWithElement(blob, onEnd, onFail);
+    });
+  return () => {
+    stopped = true;
+    fallback?.();
+    try {
+      source?.stop();
+    } catch {
+      // まだ始まっていないとき
+    }
+    close();
+  };
+}
+
+function playWithElement(blob: Blob, onEnd: () => void, onFail: () => void): Stop {
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  const release = () => URL.revokeObjectURL(url);
+  audio.onended = () => {
+    release();
+    onEnd();
+  };
+  const fail = () => {
+    release();
+    onFail();
+  };
+  audio.onerror = fail;
+  void audio.play().catch(fail);
+  return () => audio.pause();
+}
 
 // 家族からの伝言。本人が押したときだけ、家族の声で流し、字幕を大きく出す。
 // 聞いたあとは「わかった」で閉じられる(返事をしたときも閉じる)
@@ -14,7 +91,6 @@ export function MessageCard({
   onHeard,
   onDone,
   speakText,
-  warmMic,
   slim = false,
 }: {
   message: Message;
@@ -25,20 +101,18 @@ export function MessageCard({
   onDone: () => void;
   // 文字だけの伝言(LINE から)は、リンちゃんの声で読み上げる
   speakText: (text: string, onEnd: () => void) => void;
-  // 声を流す前に、マイクを一度動かしておく(そのあとの返事を聞き取れるように)
-  warmMic: () => Promise<void>;
   // リンちゃんの返事や写真が一緒に出ているときは、1行にしてボタンが画面の外に出ないようにする
   slim?: boolean;
 }) {
   const [playing, setPlaying] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const stopRef = useRef<(() => void) | null>(null);
   const photo = usePhotoUrl(person?.photo);
 
-  useEffect(() => () => audioRef.current?.pause(), []);
+  useEffect(() => () => stopRef.current?.(), []);
 
   const play = () => {
     onPlay();
-    audioRef.current?.pause();
+    stopRef.current?.();
     if (!message.audio) {
       setPlaying(true);
       speakText(`${message.from}からです。${message.text ?? ""}`, () => {
@@ -49,35 +123,15 @@ export function MessageCard({
       setTimeout(() => setPlaying(false), 30_000);
       return;
     }
-    const url = URL.createObjectURL(message.audio);
-    const audio = new Audio(url);
-    audioRef.current = audio;
-    const done = () => {
-      setPlaying(false);
-      URL.revokeObjectURL(url);
-    };
-    const begin = () => {
-      audio.onended = () => {
-        done();
-        onHeard();
-      };
-      audio.onerror = done;
-      void audio.play().catch(done);
-    };
     setPlaying(true);
-    if (isMicWarm()) {
-      begin();
-      return;
-    }
-    // マイクの準備を待つ間に「押した」扱いが切れないよう、押した瞬間に音なしで再生を始めておく
-    audio.muted = true;
-    void audio.play().catch(() => {});
-    void warmMic().then(() => {
-      audio.pause();
-      audio.currentTime = 0;
-      audio.muted = false;
-      begin();
-    });
+    stopRef.current = playVoice(
+      message.audio,
+      () => {
+        setPlaying(false);
+        onHeard();
+      },
+      () => setPlaying(false),
+    );
   };
 
   const oneLine = slim && !playing;

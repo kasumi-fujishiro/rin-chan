@@ -458,16 +458,35 @@ export function Talk() {
     logSpeech("伝言が終わった");
     const updated = { ...m, heardAt: Date.now() };
     // 聞き終わったら、そのまま返事を聞き取る(試用で、押す前に返事をしてしまっていたため)。
-    // 本人はすぐ返事をするので、保存などを待たず、マイクを先に用意する
     messageReplyRef.current = updated;
-    setTimeout(() => {
+    let listened = false;
+    const listen = () => {
+      if (listened) return;
+      listened = true;
       setWakeHold(false);
       const { rec, pick, thinking } = latest.current;
       if (messageReplyRef.current !== updated || rec.listening || pick || thinking) return;
       setAutoListening(true);
       setRelayMode(false);
       rec.start({ persist: true });
-    }, 300);
+    };
+    if (m.audio) {
+      // 声の再生の直後はマイクに音が入らないことがある。読み上げのあとなら聞き取れるので、一言はさむ。
+      // 本人にも、返事をする時が分かる
+      const invite = "お返事があれば、話してくださいね。";
+      setReply(invite);
+      listenAfterRef.current = false;
+      speaker.speak(invite, {
+        voice,
+        rate: voiceSetting.rate,
+        pitch: voiceSetting.pitch,
+        onEnd: () => setTimeout(listen, 400),
+      });
+      // 読み上げが鳴らなかったときも、聞き取りには進む
+      setTimeout(listen, 7000);
+    } else {
+      setTimeout(listen, 300);
+    }
     // 一時的な調査用:聞き取りの動きだけを送る(話した言葉は入らない)
     setTimeout(() => {
       if (!settings?.lineKey) return;
@@ -476,7 +495,7 @@ export function Talk() {
         headers: { "Content-Type": "application/json", "x-rin-key": settings.lineKey },
         body: JSON.stringify({ log: speechLog.slice(0, 40) }),
       }).catch(() => {});
-    }, 15_000);
+    }, 25_000);
     void saveMessage(updated);
     // リンちゃんも伝言の中身を知っておく(あとで「何て言ってた?」と聞かれたときのため)
     if (m.text)
@@ -837,7 +856,6 @@ export function Talk() {
             setTimeout(() => setWakeHold(false), 200_000);
           }}
           onHeard={() => heardMessage(message)}
-          warmMic={rec.warm}
           onDone={() => {
             messageReplyRef.current = null;
             void finishMessage(message);

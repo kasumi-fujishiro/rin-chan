@@ -35,11 +35,6 @@ export function logSpeech(message: string) {
   window.dispatchEvent(new Event("rin-speech-log"));
 }
 
-// このページでマイクが一度でも動いたか。iPad では、マイクを一度も使っていない状態で声を再生すると、
-// そのあとのマイクは印が出ても音が入らない(一度使ったあとの再生なら、すぐ聞き取れる)
-let micWarmed = false;
-export const isMicWarm = () => micWarmed;
-
 function getRecognitionCtor(): RecognitionCtor | null {
   if (typeof window === "undefined") return null;
   const w = window as unknown as {
@@ -155,7 +150,6 @@ export function useRecognition(onFinal: (text: string) => void) {
     rec.onstart = () => {
       logSpeech(`onstart ${since()}`);
       clearTimeout(noStart);
-      micWarmed = true;
       if (recRef.current !== rec) return;
       setError(null);
       setInterim("");
@@ -272,45 +266,6 @@ export function useRecognition(onFinal: (text: string) => void) {
     }, 1000);
   }, []);
 
-  // 声を再生する前に、マイクを一度だけ短く動かす。聞いた言葉は使わない
-  const warm = useCallback(
-    () =>
-      new Promise<void>((resolve) => {
-        const Ctor = getRecognitionCtor();
-        if (!Ctor || micWarmed || recRef.current) {
-          resolve();
-          return;
-        }
-        const rec = new Ctor();
-        rec.lang = "ja-JP";
-        let finished = false;
-        const finish = () => {
-          if (finished) return;
-          finished = true;
-          clearTimeout(limit);
-          logSpeech("マイクの準備おわり");
-          setTimeout(resolve, 300);
-        };
-        const limit = setTimeout(() => {
-          rec.abort();
-          finish();
-        }, 2500);
-        rec.onstart = () => {
-          micWarmed = true;
-          setTimeout(() => rec.stop(), 500);
-        };
-        rec.onerror = (e) => logSpeech(`マイクの準備 error=${e.error}`);
-        rec.onend = finish;
-        logSpeech("マイクの準備");
-        try {
-          rec.start();
-        } catch {
-          finish();
-        }
-      }),
-    [],
-  );
-
   // 呼びかけモード:画面を「聞いている」にせず、まわりの声を聞き続ける。
   // 言葉のまとまりごとに onHeard へ渡す。ふつうの聞き取りが始まると、begin がこちらを止める
   const [wakeLive, setWakeLive] = useState(false);
@@ -336,7 +291,6 @@ export function useRecognition(onFinal: (text: string) => void) {
     };
     rec.onstart = () => {
       logSpeech("呼びかけモード 聞き始め");
-      micWarmed = true;
       if (recRef.current === rec) setWakeLive(true);
     };
     rec.onresult = (e) => {
@@ -410,7 +364,7 @@ export function useRecognition(onFinal: (text: string) => void) {
     };
   }, []);
 
-  return { listening, interim, error, start, stop, warm, wake, stopWake, wakeLive };
+  return { listening, interim, error, start, stop, wake, stopWake, wakeLive };
 }
 
 export function useJapaneseVoices() {
