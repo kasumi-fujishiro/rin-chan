@@ -4,7 +4,7 @@ import { useEffect, useId, useState } from "react";
 import type { RinMood } from "./Rin";
 
 // 部品に分けて動かすリンちゃん。動きは「今どうしているか」を伝えるためだけに付ける。
-// - 毛は黒いまま。目のまわりだけ細く明るくする(黒い顔に黒い目だと、明暗の差が小さくて見えにくいため)
+// - 毛は黒いまま。目のまわりと口の線だけ明るくする(黒い顔に黒い目や口だと、明暗の差が小さくて見えにくいため)
 // - 動かすのは一度に一か所。写真を見せている間(still)は止める
 // - 呼吸は全体を一緒に動かす。つけっぱなしの iPad でも軽いように、絵の中ではなく外側の箱を動かす
 const FUR = "#2A2522";
@@ -100,6 +100,10 @@ export function RinLive({ mood, size, still = false }: { mood: RinMood; size: nu
             <stop offset="60%" stopColor={FUR} />
             <stop offset="100%" stopColor="#1A1614" />
           </radialGradient>
+          <linearGradient id={`${id}m`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#6A625B" />
+            <stop offset="100%" stopColor="#4C4540" />
+          </linearGradient>
           <linearGradient id={`${id}c`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#FBF3E6" />
             <stop offset="100%" stopColor="#E9D6BB" />
@@ -115,7 +119,7 @@ export function RinLive({ mood, size, still = false }: { mood: RinMood; size: nu
             <Ear side={-1} />
             <Ear side={1} />
             <ellipse cx={0} cy={0} rx={44} ry={40} fill={`url(#${id}f)`} />
-            <ellipse cx={0} cy={17} rx={23} ry={17} fill={`url(#${id}c)`} />
+            <ellipse cx={0} cy={17} rx={24} ry={17} fill={`url(#${id}m)`} />
             <circle cx={-16} cy={-4} r={9.5} fill={CREAM} />
             <circle cx={16} cy={-4} r={9.5} fill={CREAM} />
             <ellipse cx={-16} cy={-21} rx={5.5} ry={3.2} fill="#E8B673" />
@@ -123,6 +127,7 @@ export function RinLive({ mood, size, still = false }: { mood: RinMood; size: nu
             <Eye cx={-16} />
             <Eye cx={16} />
             <ellipse cx={0} cy={9} rx={6.5} ry={4.5} fill={INK} />
+            <ellipse cx={-2} cy={7.4} rx={2} ry={1.1} fill="#8A817A" />
             <g className="rin-tongue">
               <path d="M-5 18 V24 Q-5 29.5 0 29.5 Q5 29.5 5 24 V18 Z" fill="#EE7F86" />
               <path d="M0 20 V25.5" stroke="#C95F68" strokeWidth={1.2} strokeLinecap="round" />
@@ -131,7 +136,7 @@ export function RinLive({ mood, size, still = false }: { mood: RinMood; size: nu
               className="rin-mouth-closed"
               d="M0 13.5 V17 M-9 17 Q-4.5 23 0 17 Q4.5 23 9 17"
               fill="none"
-              stroke="#3A2E28"
+              stroke={CREAM}
               strokeWidth={2.4}
               strokeLinecap="round"
             />
