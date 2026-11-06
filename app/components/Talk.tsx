@@ -468,13 +468,26 @@ export function Talk() {
     });
     // 聞き終わったら、そのまま返事を聞き取る(試用で、押す前に返事をしてしまっていたため)
     messageReplyRef.current = updated;
-    setTimeout(() => {
+    // 声の再生のあとは、iPad が音の出力からマイクへ切り替わるまで少し待つ。
+    // 聞き始められなかったときは、もう一度だけ試す(試用で、声の伝言のあとだけ聞き取れなかったため)
+    const listen = (retry: boolean) => {
       const { rec, pick, thinking } = latest.current;
-      if (rec.listening || pick || thinking) return;
+      if (messageReplyRef.current !== updated || rec.listening || pick || thinking) return;
       setAutoListening(true);
       setRelayMode(false);
       rec.start();
-    }, 300);
+      if (retry) setTimeout(() => listen(false), 1800);
+    };
+    setTimeout(() => listen(true), m.audio ? 1000 : 300);
+  };
+  // 家族の LINE にも、その場で知らせる(合言葉が入っていて、知らせる設定のとき)
+  const notifyFamily = (m: Message, result: { reply: string } | { understood: true }) => {
+    if (!settings?.lineKey || settings.notifyReplies === false) return;
+    void fetch("/api/notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-rin-key": settings.lineKey },
+      body: JSON.stringify({ from: m.from, message: m.text, userCallName: settings.userCallName, ...result }),
+    }).catch(() => {});
   };
   const finishMessage = async (m: Message, reply?: string) => {
     await saveMessage({ ...m, doneAt: Date.now(), reply });
@@ -514,19 +527,7 @@ export function Talk() {
     if (replied) {
       messageReplyRef.current = null;
       void finishMessage(replied, pending);
-      // 家族の LINE にも、その場で知らせる(合言葉が入っていて、知らせる設定のとき)
-      if (settings?.lineKey && settings.notifyReplies !== false) {
-        void fetch("/api/notify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-rin-key": settings.lineKey },
-          body: JSON.stringify({
-            from: replied.from,
-            message: replied.text,
-            reply: pending,
-            userCallName: settings.userCallName,
-          }),
-        }).catch(() => {});
-      }
+      notifyFamily(replied, { reply: pending });
       const text = `${replied.from}に、伝えておきますね。`;
       setReply(text);
       setShown(null);
@@ -553,7 +554,8 @@ export function Talk() {
 
   const onButton = (forFamily = false) => {
     listenAfterRef.current = false;
-    messageReplyRef.current = null;
+    // 伝言のあとに自分で押して話したときも、その伝言への返事として残す
+    if (forFamily) messageReplyRef.current = null;
     setAutoListening(false);
     setQuiet(false);
     speaker.unlock();
@@ -833,6 +835,7 @@ export function Talk() {
           onDone={() => {
             messageReplyRef.current = null;
             void finishMessage(message);
+            notifyFamily(message, { understood: true });
           }}
           speakText={(text, onEnd) => {
             listenAfterRef.current = false;
