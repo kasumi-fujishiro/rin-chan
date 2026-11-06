@@ -9,7 +9,7 @@ import { SpotPhoto } from "./SpotPhoto";
 import { PhotoPicker, type PickState } from "./PhotoPicker";
 import { StandaloneWarning } from "./StandaloneWarning";
 import { Rin, type RinMood } from "./Rin";
-import { logSpeech, speechLog, useJapaneseVoices, useRecognition, useSpeaker } from "../lib/speech";
+import { logSpeech, useJapaneseVoices, useRecognition, useSpeaker } from "../lib/speech";
 import { appendTrialLog, isReask, isScreenEcho, isVague } from "../lib/trialLog";
 import {
   DEFAULT_VOICE,
@@ -487,15 +487,6 @@ export function Talk() {
     } else {
       setTimeout(listen, 300);
     }
-    // 一時的な調査用:聞き取りの動きだけを送る(話した言葉は入らない)
-    setTimeout(() => {
-      if (!settings?.lineKey) return;
-      void fetch("/api/diag", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-rin-key": settings.lineKey },
-        body: JSON.stringify({ log: speechLog.slice(0, 40) }),
-      }).catch(() => {});
-    }, 25_000);
     void saveMessage(updated);
     // リンちゃんも伝言の中身を知っておく(あとで「何て言ってた?」と聞かれたときのため)
     if (m.text)
