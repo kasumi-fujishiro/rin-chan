@@ -48,6 +48,11 @@ export function setAudioSession(type: "playback" | "auto") {
   }
 }
 
+// iPad の記録では、マイクをしばらく使っていないと、自動で始めた聞き取りに音が入らなかった
+// (10秒以内に使っていれば聞き取れた)。最後にマイクを使った時刻を覚えておく
+let lastMicAt = 0;
+const MIC_FRESH_MS = 10_000;
+
 function getRecognitionCtor(): RecognitionCtor | null {
   if (typeof window === "undefined") return null;
   const w = window as unknown as {
@@ -225,6 +230,7 @@ export function useRecognition(onFinal: (text: string) => void) {
       clearTimeout(maxTimer);
       clearTimeout(noStart);
       clearTimeout(settle);
+      lastMicAt = Date.now();
       if (recRef.current !== rec) return;
       if (long && finalText.trim()) onFinalRef.current(finalText.trim());
       if (persist && !retry && !gotResult && !stoppedRef.current && Date.now() - startedAt < 2000) {
@@ -280,6 +286,43 @@ export function useRecognition(onFinal: (text: string) => void) {
     }, 1000);
   }, []);
 
+  // 声の伝言を流す前に、マイクを短く動かしておく。聞いた言葉は使わない
+  const warm = useCallback(
+    () =>
+      new Promise<void>((resolve) => {
+        const Ctor = getRecognitionCtor();
+        if (!Ctor || recRef.current || Date.now() - lastMicAt < MIC_FRESH_MS) {
+          resolve();
+          return;
+        }
+        const rec = new Ctor();
+        rec.lang = "ja-JP";
+        let finished = false;
+        const finish = () => {
+          if (finished) return;
+          finished = true;
+          clearTimeout(limit);
+          lastMicAt = Date.now();
+          logSpeech("マイクの準備おわり");
+          setTimeout(resolve, 200);
+        };
+        const limit = setTimeout(() => {
+          rec.abort();
+          finish();
+        }, 3000);
+        rec.onstart = () => setTimeout(() => rec.abort(), 1000);
+        rec.onerror = () => {};
+        rec.onend = finish;
+        logSpeech("マイクの準備");
+        try {
+          rec.start();
+        } catch {
+          finish();
+        }
+      }),
+    [],
+  );
+
   // 呼びかけモード:画面を「聞いている」にせず、まわりの声を聞き続ける。
   // 言葉のまとまりごとに onHeard へ渡す。ふつうの聞き取りが始まると、begin がこちらを止める
   const [wakeLive, setWakeLive] = useState(false);
@@ -323,6 +366,7 @@ export function useRecognition(onFinal: (text: string) => void) {
     rec.onerror = (e) => logSpeech(`呼びかけモード error=${e.error}`);
     rec.onend = () => {
       logSpeech(`呼びかけモード end +${Date.now() - startedAt}ms`);
+      lastMicAt = Date.now();
       clearTimeout(refresh);
       clearTimeout(settle);
       flush();
@@ -378,7 +422,7 @@ export function useRecognition(onFinal: (text: string) => void) {
     };
   }, []);
 
-  return { listening, interim, error, start, stop, wake, stopWake, wakeLive };
+  return { listening, interim, error, start, stop, warm, wake, stopWake, wakeLive };
 }
 
 export function useJapaneseVoices() {

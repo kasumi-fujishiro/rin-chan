@@ -8,11 +8,10 @@ import { usePhotoUrl } from "../lib/usePhotoUrl";
 type Stop = () => void;
 
 // 声は Web Audio で流す。音の小さい録音も聞こえるように大きさをそろえ、終わったら音の経路を閉じる
-function playVoice(blob: Blob, onEnd: () => void, onFail: () => void): Stop {
+function playVoice(blob: Blob, ready: Promise<void>, onEnd: () => void, onFail: () => void): Stop {
   const Ctx =
     window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!Ctx) return playWithElement(blob, onEnd, onFail);
-  setAudioSession("playback");
   // 押した瞬間に作らないと、iPad で音が出ない
   const ctx = new Ctx();
   void ctx.resume();
@@ -36,8 +35,10 @@ function playVoice(blob: Blob, onEnd: () => void, onFail: () => void): Stop {
   blob
     .arrayBuffer()
     .then((data) => ctx.decodeAudioData(data))
-    .then((buffer) => {
+    .then(async (buffer) => {
+      await ready;
       if (stopped) return;
+      setAudioSession("playback");
       let peak = 0;
       for (let c = 0; c < buffer.numberOfChannels; c++) {
         const samples = buffer.getChannelData(c);
@@ -95,6 +96,7 @@ export function MessageCard({
   onHeard,
   onDone,
   speakText,
+  warmMic,
   slim = false,
 }: {
   message: Message;
@@ -105,6 +107,8 @@ export function MessageCard({
   onDone: () => void;
   // 文字だけの伝言(LINE から)は、リンちゃんの声で読み上げる
   speakText: (text: string, onEnd: () => void) => void;
+  // 声を流す前に、マイクを動かしておく(そのあとの返事を聞き取れるように)
+  warmMic?: () => Promise<void>;
   // リンちゃんの返事や写真が一緒に出ているときは、1行にしてボタンが画面の外に出ないようにする
   slim?: boolean;
 }) {
@@ -130,6 +134,7 @@ export function MessageCard({
     setPlaying(true);
     stopRef.current = playVoice(
       message.audio,
+      warmMic?.() ?? Promise.resolve(),
       () => {
         setPlaying(false);
         onHeard();

@@ -856,6 +856,7 @@ export function Talk() {
             setTimeout(() => setWakeHold(false), 200_000);
           }}
           onHeard={() => heardMessage(message)}
+          warmMic={rec.warm}
           onDone={() => {
             messageReplyRef.current = null;
             void finishMessage(message);
