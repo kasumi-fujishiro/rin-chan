@@ -60,30 +60,39 @@ export async function listInbox(kv: KV, limit = 10): Promise<InboxItem[]> {
 
 // LINE で届いた声を字幕にする。メタデータは 1024 バイトまでなので長さをそろえ、失敗したら字幕なしで届ける
 const SUBTITLE_MAX = 200;
-const TRANSCRIBE_MS = 20_000;
-// 音が小さいときに、音声認識が作ってしまいやすい言葉
-const NOT_SPOKEN = /^(ご視聴ありがとうございました|ありがとうございました)[。.]?$/;
+// 2回試しても、LINE の受け取りの持ち時間(30秒)に収まる長さ
+const TRANSCRIBE_MS = 13_000;
+// 音が小さいときに、音声認識が作ってしまいやすい言葉(「ありがとうございました」は本当の伝言にもあるので消さない)
+const NOT_SPOKEN = /^ご視聴ありがとうございました[。.]?$/;
 
 type AI = { run(model: string, input: unknown): Promise<{ text?: string }> };
 
 export async function transcribe(env: Record<string, unknown>, audio: ArrayBuffer): Promise<string | undefined> {
   const ai = env.AI as AI | undefined;
-  if (!ai) return undefined;
-  try {
-    const result = await Promise.race([
-      ai.run("@cf/openai/whisper-large-v3-turbo", {
-        audio: Buffer.from(audio).toString("base64"),
-        language: "ja",
-        vad_filter: true,
-      }),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), TRANSCRIBE_MS)),
-    ]);
-    const text = result?.text?.trim();
-    if (!text || NOT_SPOKEN.test(text)) return undefined;
-    return text.length > SUBTITLE_MAX ? `${text.slice(0, SUBTITLE_MAX)}…` : text;
-  } catch {
+  if (!ai) {
+    console.error("subtitle: AI binding missing");
     return undefined;
   }
+  const base64 = Buffer.from(audio).toString("base64");
+  // 声の区間だけを拾う設定で空になったら、音全体でもう一度試す
+  for (const vad_filter of [true, false]) {
+    const startedAt = Date.now();
+    try {
+      const result = await Promise.race([
+        ai.run("@cf/openai/whisper-large-v3-turbo", { audio: base64, language: "ja", vad_filter }),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), TRANSCRIBE_MS)),
+      ]);
+      const text = result?.text?.trim();
+      // 記録には長さと時間だけを残す。伝言の中身は残さない
+      console.log(`subtitle: vad=${vad_filter} bytes=${audio.byteLength} chars=${text?.length ?? "none"} ms=${Date.now() - startedAt}`);
+      if (text && !NOT_SPOKEN.test(text)) {
+        return text.length > SUBTITLE_MAX ? `${text.slice(0, SUBTITLE_MAX)}…` : text;
+      }
+    } catch (err) {
+      console.error(`subtitle: vad=${vad_filter} bytes=${audio.byteLength} failed: ${String(err).slice(0, 200)}`);
+    }
+  }
+  return undefined;
 }
 
 export async function deleteInbox(kv: KV, keys: string[]) {

@@ -9,7 +9,7 @@ import { SpotPhoto } from "./SpotPhoto";
 import { PhotoPicker, type PickState } from "./PhotoPicker";
 import { StandaloneWarning } from "./StandaloneWarning";
 import { Rin, type RinMood } from "./Rin";
-import { useJapaneseVoices, useRecognition, useSpeaker } from "../lib/speech";
+import { logSpeech, useJapaneseVoices, useRecognition, useSpeaker } from "../lib/speech";
 import { appendTrialLog, isReask, isScreenEcho, isVague } from "../lib/trialLog";
 import {
   DEFAULT_VOICE,
@@ -454,9 +454,24 @@ export function Talk() {
     await putMessage(updated);
     setMessages((list) => list.map((x) => (x.id === updated.id ? updated : x)));
   };
-  const heardMessage = async (m: Message) => {
+  const heardMessage = (m: Message) => {
+    logSpeech("伝言が終わった");
     const updated = { ...m, heardAt: Date.now() };
-    await saveMessage(updated);
+    // 聞き終わったら、そのまま返事を聞き取る(試用で、押す前に返事をしてしまっていたため)。
+    // 本人はすぐ返事をするので、保存などを待たず、マイクを先に用意する
+    messageReplyRef.current = updated;
+    // 始まるまで数秒かかることがある。途中でやり直すと最初からになるので、長く待っても始まらないときだけ試す
+    const listen = (retry: boolean) => {
+      if (retry) setWakeHold(false);
+      const { rec, pick, thinking } = latest.current;
+      if (messageReplyRef.current !== updated || rec.listening || pick || thinking) return;
+      setAutoListening(true);
+      setRelayMode(false);
+      rec.start({ persist: true });
+      if (retry) setTimeout(() => listen(false), 8000);
+    };
+    setTimeout(() => listen(true), 300);
+    void saveMessage(updated);
     // リンちゃんも伝言の中身を知っておく(あとで「何て言ってた?」と聞かれたときのため)
     if (m.text)
       setHistory((h) => [...h, { role: "user", content: `(${m.from}からの伝言を聞きました:「${m.text}」)` }]);
@@ -466,19 +481,6 @@ export function Talk() {
       reply: `${m.from}からの伝言を聞いた`,
       reask: 0,
     });
-    // 聞き終わったら、そのまま返事を聞き取る(試用で、押す前に返事をしてしまっていたため)
-    messageReplyRef.current = updated;
-    // 声の再生のあとは、iPad が音の出力からマイクへ切り替わるまで少し待つ。
-    // 聞き始められなかったときは、もう一度だけ試す(試用で、声の伝言のあとだけ聞き取れなかったため)
-    const listen = (retry: boolean) => {
-      const { rec, pick, thinking } = latest.current;
-      if (messageReplyRef.current !== updated || rec.listening || pick || thinking) return;
-      setAutoListening(true);
-      setRelayMode(false);
-      rec.start();
-      if (retry) setTimeout(() => listen(false), 1800);
-    };
-    setTimeout(() => listen(true), m.audio ? 1000 : 300);
   };
   // 家族の LINE にも、その場で知らせる(合言葉が入っていて、知らせる設定のとき)
   const notifyFamily = (m: Message, result: { reply: string } | { understood: true }) => {
@@ -828,10 +830,7 @@ export function Talk() {
             // 再生に失敗しても、聞き続けに戻れるように
             setTimeout(() => setWakeHold(false), 200_000);
           }}
-          onHeard={() => {
-            setWakeHold(false);
-            void heardMessage(message);
-          }}
+          onHeard={() => heardMessage(message)}
           onDone={() => {
             messageReplyRef.current = null;
             void finishMessage(message);

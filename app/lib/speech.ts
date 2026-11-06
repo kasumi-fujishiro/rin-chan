@@ -94,14 +94,18 @@ export function useRecognition(onFinal: (text: string) => void) {
   }, [onFinal]);
 
   // やり直しのときに自分自身を呼ぶための参照
-  const beginRef = useRef<(retry: boolean, long?: boolean) => void>(() => {});
+  const beginRef = useRef<(retry: boolean, long?: boolean, persist?: boolean) => void>(() => {});
+  // 止めるように言われたあとは、聞き直さない
+  const stoppedRef = useRef(false);
   // long:間があいても止めず、しばらく黙ったら終える(家族の言葉が途中で切れていたため)
-  const begin = useCallback((retry: boolean, long = false) => {
+  // persist:すぐに終わってしまったら、1回だけ聞き直す(声の伝言のあとは iPad に断られることがあるため)
+  const begin = useCallback((retry: boolean, long = false, persist = false) => {
     const Ctor = getRecognitionCtor();
     if (!Ctor) {
       setError("このブラウザは音声認識に対応していません。");
       return;
     }
+    stoppedRef.current = false;
     // 前の聞き取りを止める。止めた側の通知が新しい聞き取りを消さないよう、各ハンドラで自分か確かめる
     const prev = recRef.current;
     recRef.current = null;
@@ -139,8 +143,10 @@ export function useRecognition(onFinal: (text: string) => void) {
       setInterim("");
       setListening(true);
     };
+    let gotResult = false;
     rec.onresult = (e) => {
       if (recRef.current !== rec) return;
+      gotResult = true;
       if (long) {
         let fin = "";
         let interim = "";
@@ -169,7 +175,7 @@ export function useRecognition(onFinal: (text: string) => void) {
       // iOS は始めた直後に止められることがある(読み上げや別のタブとマイクを取り合うとき)。1回だけやり直す
       if (e.error === "aborted" && !retry && Date.now() - startedAt < 2000) {
         recRef.current = null;
-        setTimeout(() => beginRef.current(true, long), 400);
+        setTimeout(() => beginRef.current(true, long, persist), 400);
         return;
       }
       setError(RECOGNITION_ERRORS[e.error] ?? `エラー:${e.error}`);
@@ -180,6 +186,13 @@ export function useRecognition(onFinal: (text: string) => void) {
       clearTimeout(maxTimer);
       if (recRef.current !== rec) return;
       if (long && finalText.trim()) onFinalRef.current(finalText.trim());
+      if (persist && !retry && !gotResult && !stoppedRef.current && Date.now() - startedAt < 2000) {
+        recRef.current = null;
+        setTimeout(() => {
+          if (!stoppedRef.current) beginRef.current(true, long, persist);
+        }, 400);
+        return;
+      }
       setListening(false);
       recRef.current = null;
     };
@@ -197,20 +210,23 @@ export function useRecognition(onFinal: (text: string) => void) {
   }, [begin]);
 
   const start = useCallback(
-    (opts: { long?: boolean } = {}) => {
+    (opts: { long?: boolean; persist?: boolean } = {}) => {
       setError(null);
       // 読み上げ中だった場合は止めて、少し待ってからマイクを使う(iOS で取り合いにならないように)
       if ("speechSynthesis" in window && (speechSynthesis.speaking || speechSynthesis.pending)) {
         speechSynthesis.cancel();
-        setTimeout(() => begin(false, opts.long), 300);
+        setTimeout(() => begin(false, opts.long, opts.persist), 300);
       } else {
-        begin(false, opts.long);
+        begin(false, opts.long, opts.persist);
       }
     },
     [begin],
   );
 
-  const stop = useCallback(() => recRef.current?.stop(), []);
+  const stop = useCallback(() => {
+    stoppedRef.current = true;
+    recRef.current?.stop();
+  }, []);
 
   // 呼びかけモード:画面を「聞いている」にせず、まわりの声を聞き続ける。
   // 言葉のまとまりごとに onHeard へ渡す。ふつうの聞き取りが始まると、begin がこちらを止める
