@@ -12,6 +12,8 @@ export type InboxMeta = {
   name: string;
   at: number;
   mime?: string;
+  // 声の伝言の字幕(文字の伝言は KV の値に入れる)
+  text?: string;
 };
 
 type KV = {
@@ -50,10 +52,38 @@ export async function listInbox(kv: KV, limit = 10): Promise<InboxItem[]> {
       key: k.name,
       id,
       data: metadata.type === "audio" ? Buffer.from(value).toString("base64") : undefined,
-      text: metadata.type === "text" ? new TextDecoder().decode(value) : undefined,
+      text: metadata.type === "text" ? new TextDecoder().decode(value) : metadata.text,
     });
   }
   return items;
+}
+
+// LINE で届いた声を字幕にする。メタデータは 1024 バイトまでなので長さをそろえ、失敗したら字幕なしで届ける
+const SUBTITLE_MAX = 200;
+const TRANSCRIBE_MS = 20_000;
+// 音が小さいときに、音声認識が作ってしまいやすい言葉
+const NOT_SPOKEN = /^(ご視聴ありがとうございました|ありがとうございました)[。.]?$/;
+
+type AI = { run(model: string, input: unknown): Promise<{ text?: string }> };
+
+export async function transcribe(env: Record<string, unknown>, audio: ArrayBuffer): Promise<string | undefined> {
+  const ai = env.AI as AI | undefined;
+  if (!ai) return undefined;
+  try {
+    const result = await Promise.race([
+      ai.run("@cf/openai/whisper-large-v3-turbo", {
+        audio: Buffer.from(audio).toString("base64"),
+        language: "ja",
+        vad_filter: true,
+      }),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), TRANSCRIBE_MS)),
+    ]);
+    const text = result?.text?.trim();
+    if (!text || NOT_SPOKEN.test(text)) return undefined;
+    return text.length > SUBTITLE_MAX ? `${text.slice(0, SUBTITLE_MAX)}…` : text;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function deleteInbox(kv: KV, keys: string[]) {

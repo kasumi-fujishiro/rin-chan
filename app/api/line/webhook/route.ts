@@ -1,5 +1,5 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { inboxOf, putInbox } from "../../../lib/inbox";
+import { inboxOf, putInbox, transcribe } from "../../../lib/inbox";
 import type { Env } from "../../../lib/line";
 
 // LINE の公式アカウントに家族が送った声や文字を受け取り、iPad が取りに来るまで一時的に置く。
@@ -83,14 +83,16 @@ export async function POST(request: Request) {
         await replyLine(env, ev.replyToken, "声の伝言を受け取れませんでした。もう一度送ってください。");
         continue;
       }
-      await putInbox(kv, m.id, audio, {
-        type: "audio",
-        userId,
-        name: await displayName(env, userId),
-        at: Date.now(),
-        mime: res.headers.get("content-type") ?? "audio/mp4",
-      });
       await replyLine(env, ev.replyToken, "リンちゃんの iPad に届けます。聞いて返事をしたら、お知らせします。");
+      // 字幕づくりには数秒かかるので、LINE には先に答え、できてから iPad に渡す
+      const at = Date.now();
+      const mime = res.headers.get("content-type") ?? "audio/mp4";
+      getCloudflareContext().ctx.waitUntil(
+        (async () => {
+          const [text, name] = await Promise.all([transcribe(env, audio), displayName(env, userId)]);
+          await putInbox(kv, m.id, audio, { type: "audio", userId, name, at, mime, text });
+        })(),
+      );
     } else if (m.type === "text" && m.text?.trim()) {
       const text = m.text.trim().slice(0, MAX_TEXT);
       await putInbox(kv, m.id, text, {

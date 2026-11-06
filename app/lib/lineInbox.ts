@@ -61,7 +61,7 @@ export async function pullLineMessages(settings: Settings | null): Promise<Messa
       lineUserId: it.userId,
       createdAt: it.at,
       ...(it.type === "audio" && it.data
-        ? { audio: fromBase64(it.data, it.mime ?? "audio/mp4") }
+        ? { audio: fromBase64(it.data, it.mime ?? "audio/mp4"), text: it.text }
         : { text: it.text ?? "" }),
     };
     if (!message.audio && !message.text) continue;
