@@ -38,7 +38,7 @@ import {
   takeStaleConversation,
   type Turn,
 } from "../lib/conversation";
-import { markRinPromptUsed, pickRinPrompt, type RinPrompt } from "../lib/rinPrompt";
+import { markRinPromptUsed, pickRinPrompt, pickTakeover, type RinPrompt } from "../lib/rinPrompt";
 import { afterCall, isSearching } from "../lib/wake";
 
 // 本人の言葉と返事に名前が出てきた登録を探す(長い名前を優先)。その写真を大きく見せる
@@ -724,6 +724,15 @@ export function Talk() {
     });
   };
 
+  // 家族が疲れたときに、話し相手をリンちゃんに任せる。何があったかは本人に言わず、話題を移す
+  const takeOver = () => {
+    setPick(null);
+    setRelayBig(null);
+    setQuiet(false);
+    messageReplyRef.current = null;
+    tapRinPrompt(pickTakeover(settings, entries));
+  };
+
   // 写真や「ご家族から」を出すときは、ほかを小さくして「はなす」が画面の外に出ないようにする
   // 置き場所を写真で示している物は、部屋の写真に印を付けて見せる
   const room = shown?.spot ? entries.find((e) => e.id === shown.spot!.roomId && e.photo) : undefined;
@@ -855,14 +864,24 @@ export function Talk() {
           </button>
           {/* 家族がそばで話すとき用。本人の「はなす」より控えめにする */}
           {!rec.listening && (
-            <button
-              type="button"
-              onClick={() => onButton(true)}
-              disabled={thinking}
-              className="rounded-full bg-sky-100 px-8 py-4 text-2xl text-sky-900 active:scale-95 disabled:opacity-50"
-            >
-              ご家族が伝える
-            </button>
+            <div className="flex flex-wrap justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => onButton(true)}
+                disabled={thinking}
+                className="rounded-full bg-sky-100 px-8 py-4 text-2xl text-sky-900 active:scale-95 disabled:opacity-50"
+              >
+                ご家族が伝える
+              </button>
+              <button
+                type="button"
+                onClick={takeOver}
+                disabled={thinking}
+                className="rounded-full bg-sky-100 px-8 py-4 text-2xl text-sky-900 active:scale-95 disabled:opacity-50"
+              >
+                リンちゃん、代わって
+              </button>
+            </div>
           )}
         </>
       )}

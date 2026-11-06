@@ -67,12 +67,42 @@ export function pickRinPrompt(
   };
 }
 
+// 「リンちゃん、代わって」で話を引き取るときの話題。思い出と写真から、使っていないものを選ぶ。
+// 家族が押したことや、その前に何があったかは、言葉にも記録にも出さない
+export function pickTakeover(settings: Settings | null, entries: Entry[]): RinPrompt {
+  const used = read<Record<string, number>>(MEMORY_USE_KEY, {});
+  const memories = (settings?.memories ?? []).filter((m) => m.title).map((m): RinPrompt => ({
+    key: `memory:${m.title}`,
+    label: `思い出「${m.title}」`,
+    title: m.title,
+    text: `リンちゃんですよ。${m.title}のお話、聞かせてくれませんか。`,
+  }));
+  const photos = entries
+    .filter((e) => e.photo && e.name && (e.kind === "人" || e.kind === "場所"))
+    .map((e): RinPrompt => ({
+      key: `photo:${e.name}`,
+      label: `写真「${e.name}」`,
+      title: e.name,
+      text: `リンちゃんですよ。${e.name}の写真を、一緒に見ましょう。`,
+      entry: e,
+    }));
+  const topic = [...memories, ...photos].sort((a, b) => (used[a.title] ?? 0) - (used[b.title] ?? 0))[0];
+  return (
+    topic ?? {
+      key: "plain",
+      label: "代わりに話しかけた",
+      title: "",
+      text: "リンちゃんですよ。少し、一緒にいましょうね。",
+    }
+  );
+}
+
 export function markRinPromptUsed(prompt: RinPrompt, now: Date) {
   try {
     if (prompt.key === "dayservice") {
       localStorage.setItem(GREETED_KEY, JSON.stringify(today(now)));
-    } else {
-      const title = prompt.key.slice("memory:".length);
+    } else if (prompt.key !== "plain") {
+      const title = prompt.key.slice(prompt.key.indexOf(":") + 1);
       const used = read<Record<string, number>>(MEMORY_USE_KEY, {});
       localStorage.setItem(MEMORY_USE_KEY, JSON.stringify({ ...used, [title]: (used[title] ?? 0) + 1 }));
     }
