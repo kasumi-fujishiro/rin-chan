@@ -737,6 +737,9 @@ export function Talk() {
   // 置き場所を写真で示している物は、部屋の写真に印を付けて見せる
   const room = shown?.spot ? entries.find((e) => e.id === shown.spot!.roomId && e.photo) : undefined;
   const crowded = !!pick || !!photoUrl || !!room || !!relayBig;
+  // 伝言や話しかけのカードが出ているときも小さくする(iPad の縦の長さでは、ボタンが画面の外に出ていたため)。
+  // 写真とちがって、リンちゃんの動きは止めない
+  const compact = crowded || !!message || !!rinPrompt;
 
   // 待っている間は、今日の日付と時刻を出す(日にちが分かるように)
   const clock = now ? formatClock(new Date(now)) : "";
@@ -746,7 +749,7 @@ export function Talk() {
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-4xl flex-col items-center justify-center gap-4 px-4 py-6">
-      {!crowded && !rec.listening && clock && (
+      {!compact && !rec.listening && clock && (
         <p className="text-center text-3xl text-zinc-600">
           {clock}
           {dayServiceToday && (
@@ -766,14 +769,14 @@ export function Talk() {
           onContextMenu={(e) => e.preventDefault()}
           className="touch-none select-none [-webkit-touch-callout:none]"
         >
-          <Rin mood={mood} size={crowded ? 150 : 290} still={crowded} />
+          <Rin mood={mood} size={compact ? 150 : 290} still={crowded} />
         </div>
         {room?.photo && shown?.spot && !pick ? (
           <div className="relative">
             <SpotPhoto
               room={room.photo}
               spot={shown.spot}
-              className={`${relayBig ? "max-h-[24dvh]" : "max-h-[40dvh]"} shadow-lg`}
+              className={`${relayBig ? "max-h-[24dvh]" : message ? "max-h-[30dvh]" : "max-h-[40dvh]"} shadow-lg`}
             />
             {photoUrl && (
               // 物そのものの写真を、部屋の写真の角に小さく重ねる
@@ -792,7 +795,7 @@ export function Talk() {
             <img
               src={photoUrl}
               alt={shown?.name ?? ""}
-              className={`${relayBig ? "max-h-[24dvh]" : "max-h-[36dvh]"} max-w-[60%] rounded-3xl object-contain shadow-lg`}
+              className={`${relayBig ? "max-h-[24dvh]" : message ? "max-h-[30dvh]" : "max-h-[36dvh]"} max-w-[60%] rounded-3xl object-contain shadow-lg`}
             />
           )
         )}
@@ -803,16 +806,22 @@ export function Talk() {
           <p className="text-5xl font-bold leading-snug">{relayBig}</p>
         </div>
       )}
-      {rinPrompt && !pick && !rec.listening && !thinking && !speaker.speaking && (
+      {/* カードは一度に一つ。伝言を先に出す */}
+      {rinPrompt && !message && !pick && !rec.listening && !thinking && !speaker.speaking && (
         <RinPromptCard prompt={rinPrompt} onTap={() => tapRinPrompt(rinPrompt)} />
       )}
       {message && !pick && !rec.listening && !thinking && (
         <MessageCard
           message={message}
           person={entries.find((e) => e.kind === "人" && e.name === message.from)}
+          slim={!!reply || crowded}
           onPlay={() => {
             rec.stop();
             speaker.cancel();
+            // 伝言を聞く間は、前の返事や写真を片付けて、字幕を大きく見せる
+            setReply("");
+            setShown(null);
+            setRelayBig(null);
             setWakeHold(true);
             // 再生に失敗しても、聞き続けに戻れるように
             setTimeout(() => setWakeHold(false), 200_000);
@@ -843,7 +852,7 @@ export function Talk() {
         <>
           <p
             className={`text-center font-bold leading-relaxed ${
-              bigText ? "text-6xl" : relayBig ? "text-3xl" : crowded ? "text-4xl" : "min-h-[3em] text-4xl"
+              bigText ? "text-6xl" : relayBig ? "text-3xl" : compact ? "text-4xl" : "min-h-[3em] text-4xl"
             }`}
             aria-live="polite"
           >
@@ -855,7 +864,7 @@ export function Talk() {
             onClick={() => onButton(false)}
             disabled={thinking}
             aria-label={rec.listening ? "とめる" : "はなす"}
-            className={`${crowded ? "h-24" : "h-32"} flex w-full max-w-md items-center justify-center rounded-full text-white shadow-lg active:scale-95 disabled:opacity-50 ${
+            className={`${compact ? "h-24" : "h-32"} flex w-full max-w-md items-center justify-center rounded-full text-white shadow-lg active:scale-95 disabled:opacity-50 ${
               rec.listening ? "animate-pulse bg-rose-500" : "bg-amber-600"
             }`}
           >

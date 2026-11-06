@@ -13,6 +13,7 @@ export function MessageCard({
   onHeard,
   onDone,
   speakText,
+  slim = false,
 }: {
   message: Message;
   // 「人」に同じ呼び方で登録されていれば、その写真を出す
@@ -22,6 +23,8 @@ export function MessageCard({
   onDone: () => void;
   // 文字だけの伝言(LINE から)は、リンちゃんの声で読み上げる
   speakText: (text: string, onEnd: () => void) => void;
+  // リンちゃんの返事や写真が一緒に出ているときは、1行にしてボタンが画面の外に出ないようにする
+  slim?: boolean;
 }) {
   const [playing, setPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -58,8 +61,15 @@ export function MessageCard({
     void audio.play().catch(done);
   };
 
+  const oneLine = slim && !playing;
+  const thumb = oneLine ? "h-14 w-14" : "h-24 w-24";
+
   return (
-    <div className="flex w-full max-w-xl flex-col gap-3 rounded-3xl border-4 border-amber-300 bg-amber-50 p-4 shadow">
+    <div
+      className={`flex w-full max-w-xl gap-3 rounded-3xl border-4 border-amber-300 bg-amber-50 shadow ${
+        oneLine ? "items-center justify-between p-2" : "flex-col p-4"
+      }`}
+    >
       <button
         type="button"
         onClick={play}
@@ -68,9 +78,9 @@ export function MessageCard({
       >
         {photo ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={photo} alt="" className="h-24 w-24 shrink-0 rounded-2xl object-cover" />
+          <img src={photo} alt="" className={`${thumb} shrink-0 rounded-2xl object-cover`} />
         ) : (
-          <span className="flex h-24 w-24 shrink-0 items-center justify-center rounded-2xl bg-amber-200 text-5xl">
+          <span className={`${thumb} flex shrink-0 items-center justify-center rounded-2xl bg-amber-200 text-4xl`}>
             ▶
           </span>
         )}
@@ -79,7 +89,7 @@ export function MessageCard({
           {message.from}から {playing ? "♪" : "▶"}
         </span>
       </button>
-      {message.text && (playing || message.heardAt) && (
+      {!oneLine && message.text && (playing || message.heardAt) && (
         <p className="rounded-2xl bg-white p-3 text-4xl leading-snug font-bold">{message.text}</p>
       )}
       {message.heardAt && !playing && (
