@@ -146,6 +146,7 @@ app/
   api/talk            会話(Haiku)
   api/guess           「あれ」の推測(Haiku + Structured Outputs)
   api/dictionary      言葉の辞書の候補(Sonnet + Structured Outputs)
+  replay              デモ動画の撮影用。架空の台本(samples/replay.json)を話す画面で再生する。Claude は呼ばない
   api/report          家族への報告(Sonnet)と LINE への送信
   api/notify          伝言への返事を LINE に知らせる
   api/digest          会話の区切りで、今日これまでの話をメモにする(Sonnet。メモは iPad にだけ残す)

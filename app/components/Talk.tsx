@@ -53,7 +53,7 @@ function findMentioned(reply: string, entries: Entry[]): Entry | null {
 }
 
 // 「11月4日(水) 午後3時20分」の形。24時間表記は朝か夕方か分かりにくいので使わない
-function formatClock(d: Date) {
+export function formatClock(d: Date) {
   const date = d.toLocaleDateString("ja-JP", { month: "long", day: "numeric", weekday: "short" });
   const h = d.getHours();
   return `${date} ${h < 12 ? "午前" : "午後"}${h % 12 || 12}時${d.getMinutes()}分`;
@@ -763,7 +763,7 @@ export function Talk() {
   );
 }
 
-function MicIcon() {
+export function MicIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-16 w-16" fill="currentColor" aria-hidden>
       <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z" />
@@ -772,7 +772,7 @@ function MicIcon() {
   );
 }
 
-function StopIcon() {
+export function StopIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-14 w-14" fill="currentColor" aria-hidden>
       <rect x="6" y="6" width="12" height="12" rx="2" />

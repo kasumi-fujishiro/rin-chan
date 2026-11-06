@@ -13,12 +13,15 @@ export type PickState =
 export function PhotoPicker({
   pick,
   busy,
+  chosen,
   onKind,
   onChoose,
   onNone,
 }: {
   pick: PickState;
   busy: boolean;
+  // 再現モードで、本人が押した写真を見せる
+  chosen?: string;
   onKind: (kind: Kind) => void;
   onChoose: (entry: Entry) => void;
   onNone: () => void;
@@ -56,7 +59,7 @@ export function PhotoPicker({
             }`}
           >
             {pick.candidates.map((e) => (
-              <Candidate key={e.id} entry={e} onClick={() => onChoose(e)} />
+              <Candidate key={e.id} entry={e} selected={e.name === chosen} onClick={() => onChoose(e)} />
             ))}
           </div>
         </>
@@ -68,13 +71,23 @@ export function PhotoPicker({
   );
 }
 
-function Candidate({ entry, onClick }: { entry: Entry; onClick: () => void }) {
+function Candidate({
+  entry,
+  selected,
+  onClick,
+}: {
+  entry: Entry;
+  selected?: boolean;
+  onClick: () => void;
+}) {
   const url = usePhotoUrl(entry.photo);
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-col items-center gap-3 rounded-3xl bg-white p-3 shadow-lg active:scale-95"
+      className={`flex flex-col items-center gap-3 rounded-3xl bg-white p-3 shadow-lg active:scale-95 ${
+        selected ? "scale-95 ring-8 ring-amber-500" : ""
+      }`}
     >
       {url ? (
         // eslint-disable-next-line @next/next/no-img-element
