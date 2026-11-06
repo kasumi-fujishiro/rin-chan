@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Entry, Message } from "../lib/familyStore";
+import { setAudioSession } from "../lib/speech";
 import { usePhotoUrl } from "../lib/usePhotoUrl";
 
 type Stop = () => void;
@@ -11,6 +12,7 @@ function playVoice(blob: Blob, onEnd: () => void, onFail: () => void): Stop {
   const Ctx =
     window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!Ctx) return playWithElement(blob, onEnd, onFail);
+  setAudioSession("playback");
   // 押した瞬間に作らないと、iPad で音が出ない
   const ctx = new Ctx();
   void ctx.resume();
@@ -21,7 +23,9 @@ function playVoice(blob: Blob, onEnd: () => void, onFail: () => void): Stop {
   let fallback: Stop | undefined;
   const close = () => {
     clearTimeout(limit);
-    if (ctx.state !== "closed") void ctx.close();
+    if (ctx.state === "closed") return;
+    void ctx.close();
+    setAudioSession("auto");
   };
   const finish = () => {
     if (finished || stopped) return;

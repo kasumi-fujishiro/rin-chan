@@ -35,6 +35,19 @@ export function logSpeech(message: string) {
   window.dispatchEvent(new Event("rin-speech-log"));
 }
 
+// iOS はマイクを一度使うと、音の出口が通話用に変わって再生の音が小さくなる。
+// 伝言を流す間だけ再生用にし、終わったら iPad まかせに戻す
+export function setAudioSession(type: "playback" | "auto") {
+  const session = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
+  if (!session) return;
+  try {
+    session.type = type;
+    logSpeech(`音の使い方=${type}`);
+  } catch (err) {
+    logSpeech(`音の使い方の切り替え失敗 ${String(err)}`);
+  }
+}
+
 function getRecognitionCtor(): RecognitionCtor | null {
   if (typeof window === "undefined") return null;
   const w = window as unknown as {
@@ -190,13 +203,14 @@ export function useRecognition(onFinal: (text: string) => void) {
           logSpeech("区切りが来ないので終える");
           sent = true;
           onFinalRef.current(text);
-          rec.stop();
+          // stop だと届かない区切りを待ち続け、次の聞き取りに音が入らなくなるようなので、打ち切る
+          rec.abort();
         }, 1500);
       }
     };
     rec.onerror = (e) => {
       logSpeech(`error=${e.error} ${e.message ?? ""} ${since()}${recRef.current !== rec ? "(古い)" : ""}`);
-      if (recRef.current !== rec) return;
+      if (recRef.current !== rec || sent) return;
       // iOS は始めた直後に止められることがある(読み上げや別のタブとマイクを取り合うとき)。1回だけやり直す
       if (e.error === "aborted" && !retry && Date.now() - startedAt < 2000) {
         recRef.current = null;
