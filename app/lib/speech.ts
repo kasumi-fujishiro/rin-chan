@@ -127,6 +127,22 @@ export function useRecognition(onFinal: (text: string) => void) {
     const MAX_MS = 20000;
     const maxTimer = long ? setTimeout(() => rec.stop(), MAX_MS) : undefined;
     let gotResult = false;
+    // persist のときの備え
+    let heardSound = false;
+    let sent = false;
+    let restarting = false;
+    let fresh: ReturnType<typeof setTimeout> | undefined;
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    // マイクを閉じ終えてから聞き直す(閉じる前に始めると、iPad で動かないまま止まっていたため)
+    const relaunch = () => {
+      if (!restarting || recRef.current !== rec) return;
+      restarting = false;
+      recRef.current = null;
+      setTimeout(() => {
+        if (stoppedRef.current) setListening(false);
+        else beginRef.current(true, long, persist);
+      }, 300);
+    };
     // いつまでも始まらないときは手放す(「聞いている」のまま押せなくならないように)
     const noStart = setTimeout(() => {
       if (recRef.current !== rec) return;
@@ -148,7 +164,10 @@ export function useRecognition(onFinal: (text: string) => void) {
       "audioend",
       "nomatch",
     ]) {
-      rec.addEventListener(type, () => logSpeech(`${type} ${since()}`));
+      rec.addEventListener(type, () => {
+        if (type === "soundstart" || type === "speechstart") heardSound = true;
+        logSpeech(`${type} ${since()}`);
+      });
     }
     rec.onstart = () => {
       logSpeech(`onstart ${since()}`);
@@ -158,9 +177,19 @@ export function useRecognition(onFinal: (text: string) => void) {
       setError(null);
       setInterim("");
       setListening(true);
+      // 声の再生のあとは、マイクの印が出ても音が入らないことがある。音が来ないときだけ1回聞き直す
+      if (persist && !retry) {
+        fresh = setTimeout(() => {
+          if (recRef.current !== rec || gotResult || heardSound || stoppedRef.current) return;
+          logSpeech("音が来ないので聞き直す");
+          restarting = true;
+          rec.abort();
+          setTimeout(relaunch, 1000);
+        }, 2000);
+      }
     };
     rec.onresult = (e) => {
-      if (recRef.current !== rec) return;
+      if (recRef.current !== rec || sent) return;
       gotResult = true;
       if (long) {
         let fin = "";
@@ -182,11 +211,25 @@ export function useRecognition(onFinal: (text: string) => void) {
         if (e.results[i].isFinal) final = true;
       }
       setInterim(text);
-      if (final) onFinalRef.current(text);
+      logSpeech(`result final=${final} 文字数=${text.length} ${since()}`);
+      clearTimeout(settle);
+      if (final) {
+        sent = true;
+        onFinalRef.current(text);
+      } else if (persist) {
+        // 言葉は取れているのに区切りが来ないときは、黙ったところで終える
+        settle = setTimeout(() => {
+          if (recRef.current !== rec || sent) return;
+          logSpeech("区切りが来ないので終える");
+          sent = true;
+          onFinalRef.current(text);
+          rec.stop();
+        }, 1500);
+      }
     };
     rec.onerror = (e) => {
       logSpeech(`error=${e.error} ${e.message ?? ""} ${since()}${recRef.current !== rec ? "(古い)" : ""}`);
-      if (recRef.current !== rec) return;
+      if (recRef.current !== rec || restarting) return;
       // iOS は始めた直後に止められることがある(読み上げや別のタブとマイクを取り合うとき)。1回だけやり直す
       if (e.error === "aborted" && !retry && Date.now() - startedAt < 2000) {
         recRef.current = null;
@@ -200,6 +243,12 @@ export function useRecognition(onFinal: (text: string) => void) {
       clearTimeout(silence);
       clearTimeout(maxTimer);
       clearTimeout(noStart);
+      clearTimeout(fresh);
+      clearTimeout(settle);
+      if (restarting) {
+        relaunch();
+        return;
+      }
       if (recRef.current !== rec) return;
       if (long && finalText.trim()) onFinalRef.current(finalText.trim());
       if (persist && !retry && !gotResult && !stoppedRef.current && Date.now() - startedAt < 2000) {
