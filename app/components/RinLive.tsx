@@ -62,9 +62,9 @@ export function RinLive({ mood, size, still = false }: { mood: RinMood; size: nu
     };
   }, [mood, still]);
 
-  // 待っている間に、ときどき舌を少し出す
+  // 待っている間と聞いている間に、ときどき舌を少し出す。聞いている時間は短いので、間隔も短くする
   useEffect(() => {
-    if (still || mood !== "waiting") return;
+    if (still || mood === "speaking") return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     let timer: ReturnType<typeof setTimeout>;
     const next = () => {
@@ -74,7 +74,7 @@ export function RinLive({ mood, size, still = false }: { mood: RinMood; size: nu
           setTongue(false);
           next();
         }, 1800);
-      }, 12000 + Math.random() * 13000);
+      }, mood === "listening" ? 6000 + Math.random() * 8000 : 12000 + Math.random() * 13000);
     };
     next();
     return () => {
