@@ -206,6 +206,31 @@ export function FamilyEditor() {
         }}
       />
 
+      <section className={card}>
+        <h2 className="text-2xl font-bold">呼びかけモード</h2>
+        <p className="text-lg text-zinc-600">
+          オンにすると、ボタンを押さなくても「リンちゃん」と呼ぶだけで話を聞きます。「あれどこかしら」のように探す言葉が聞こえたら、声は出さずに写真を出します。
+        </p>
+        <ul className="list-disc pl-6 text-lg text-zinc-600">
+          <li>iPad がまわりの声を聞き続けます。家にいる方に伝えてからオンにしてください</li>
+          <li>当てはまらなかった言葉は、この iPad にも残しません。ただし聞き取りには iPad の音声認識を使うので、声が Apple に送られることがあります</li>
+          <li>開いたあと、一度画面に触ると聞き始めます。聞いている間は、話す画面の左下に緑の点が出ます</li>
+          <li>電池を使うので、充電しながら使ってください</li>
+        </ul>
+        <button
+          type="button"
+          aria-pressed={!!settings.wakeMode}
+          onClick={async () => {
+            const wakeMode = !settings.wakeMode;
+            await saveSettings({ ...((await getSettings()) ?? DEFAULT_SETTINGS), wakeMode });
+            setSettings((s) => ({ ...s, wakeMode }));
+          }}
+          className={`rounded-2xl py-4 text-2xl text-white ${settings.wakeMode ? "bg-emerald-700" : "bg-zinc-500"}`}
+        >
+          {settings.wakeMode ? "オンです(押すとオフ)" : "オフです(押すとオン)"}
+        </button>
+      </section>
+
       <Backup
         onImported={async () => {
           setSettings((await getSettings()) ?? DEFAULT_SETTINGS);

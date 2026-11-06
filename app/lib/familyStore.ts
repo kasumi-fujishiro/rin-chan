@@ -18,6 +18,8 @@ export type Settings = {
   notifyReplies?: boolean;
   // LINE で伝言を送ってきた家族。LINE の表示名を、本人が分かる呼び方(「お母さん」など)に置き換える
   lineSenders?: LineSender[];
+  // 呼びかけモード。オンの間は、押さなくても「リンちゃん」や探し物の言葉に反応する(最初はオフ)
+  wakeMode?: boolean;
 };
 
 export type LineSender = { userId: string; lineName: string; callName: string };

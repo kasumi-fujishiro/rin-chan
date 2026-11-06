@@ -39,6 +39,7 @@ import {
   type Turn,
 } from "../lib/conversation";
 import { markRinPromptUsed, pickRinPrompt, type RinPrompt } from "../lib/rinPrompt";
+import { afterCall, isSearching } from "../lib/wake";
 
 // 本人の言葉と返事に名前が出てきた登録を探す(長い名前を優先)。その写真を大きく見せる
 // 「眼鏡は居間に」のように物と場所が両方出たら、物を優先する(物の置き場所の写真に場所も写るため)
@@ -113,6 +114,13 @@ export function Talk() {
   // 話し終わったら、本人の返事をそのまま聞き取るか(毎回ボタンを押すのが難しかったため)
   const listenAfterRef = useRef(false);
   const [autoListening, setAutoListening] = useState(false);
+  // 呼びかけモード。iPad は一度触らないと声を出せないので、最初に画面に触ってから聞き始める
+  const [wakeArmed, setWakeArmed] = useState(false);
+  // 伝言を流している間などは聞かない
+  const [wakeHold, setWakeHold] = useState(false);
+  // 呼ばれずに出した写真。本人が触らなければ、しばらくして片付ける
+  const [quiet, setQuiet] = useState(false);
+  const quietAtRef = useRef(0);
   const say = useCallback(
     (text: string, slow = 1, listenAfter = true) => {
       listenAfterRef.current = listenAfter;
@@ -160,6 +168,7 @@ export function Talk() {
     // picked:「あれ」から写真で選んだもの。その名前を添えて Claude に渡す
     async (heard: string, picked?: Entry) => {
       // 30分以上空いていたら、前の話題を持ち込まず新しい会話として始める
+      setQuiet(false);
       const base = freshIfStale(history, lastActivity);
       const asked = !picked && base.length > 0 && isReask(heard);
       const reask = asked ? Math.min(reaskRef.current + 1, 3) : 0;
@@ -278,6 +287,33 @@ export function Talk() {
       }
     },
     [guess, answer, showPhotos, say],
+  );
+
+  // 探し物の言葉が聞こえたら、声は出さずに写真だけ見せる(テレビの声で話し出さないように)
+  const showQuietly = useCallback(
+    async (heard: string) => {
+      const named = entries.find((e) => e.name && heard.replace(/\s/g, "").includes(e.name) && (e.photo || e.spot));
+      if (named) {
+        setShown(named);
+        setQuiet(true);
+      } else {
+        const result = await guess(heard).catch(() => null);
+        // 「あれどこかしら」だけでは手がかりがないので、探すことの多い物の写真を見せる
+        const candidates = result?.candidates.length
+          ? result.candidates
+          : entries.filter((e) => e.kind === "物" && e.photo).slice(0, 3);
+        if (candidates.length === 0) return;
+        setPick({ stage: "photos", heard, kind: result?.kind ?? "物", candidates, byKind: false });
+        setQuiet(true);
+      }
+      appendTrialLog({
+        at: new Date().toISOString(),
+        heard,
+        reply: "(呼びかけモードで、声を出さずに写真を出した)",
+        reask: 0,
+      });
+    },
+    [entries, guess],
   );
 
   const chooseKind = async (kind: Kind) => {
@@ -519,6 +555,7 @@ export function Talk() {
     listenAfterRef.current = false;
     messageReplyRef.current = null;
     setAutoListening(false);
+    setQuiet(false);
     speaker.unlock();
     if (!rec.listening) setRelayMode(forFamily);
     if (rec.listening) {
@@ -547,6 +584,83 @@ export function Talk() {
       rec.start();
     }, 400);
   }, [speaker.speaking]);
+
+  // ---- 呼びかけモード ----
+  const wakeMode = !!settings?.wakeMode;
+  useEffect(() => {
+    if (!wakeMode || wakeArmed) return;
+    const arm = () => {
+      speaker.unlock();
+      setWakeArmed(true);
+    };
+    window.addEventListener("pointerdown", arm, { once: true });
+    return () => window.removeEventListener("pointerdown", arm);
+  }, [wakeMode, wakeArmed, speaker]);
+
+  const onWakeHeard = (text: string) => {
+    const rest = afterCall(text, settings?.assistantName ?? "");
+    if (rest !== null) {
+      rec.stopWake();
+      setWakeHold(true);
+      setQuiet(false);
+      appendTrialLog({ at: new Date().toISOString(), heard: "(呼びかけモードで名前を呼ばれた)", reply: rest, reask: 0 });
+      // マイクが閉じてから話す(iOS では同時に使うと読み上げが鳴らないことがある)
+      setTimeout(() => {
+        setWakeHold(false);
+        if (rest.length >= 2) {
+          setPending(rest);
+        } else {
+          const hello = "はい、聞いていますよ。";
+          setReply(hello);
+          say(hello);
+        }
+      }, 300);
+      return;
+    }
+    // テレビの声で何度も写真が出ないよう、一度出したらしばらく出さない
+    if (Date.now() - quietAtRef.current < 60_000) return;
+    if (!isSearching(text, entries.map((e) => e.name))) return;
+    quietAtRef.current = Date.now();
+    void showQuietly(text);
+  };
+  const wakeHeardRef = useRef(onWakeHeard);
+  useEffect(() => {
+    wakeHeardRef.current = onWakeHeard;
+  });
+
+  const wakeOn =
+    wakeMode && wakeArmed && !wakeHold && !rec.listening && !speaker.speaking && !pick && !thinking && !pending && !relayMode;
+  const { wake, stopWake } = rec;
+  useEffect(() => {
+    if (!wakeOn) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const run = () => {
+      if (document.visibilityState !== "visible") return;
+      wake(
+        (text) => wakeHeardRef.current(text),
+        (quick) => {
+          timer = setTimeout(run, quick ? 15_000 : 300);
+        },
+      );
+    };
+    timer = setTimeout(run, 800);
+    document.addEventListener("visibilitychange", run);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", run);
+      stopWake();
+    };
+  }, [wakeOn, wake, stopWake]);
+
+  useEffect(() => {
+    if (!quiet) return;
+    const timer = setTimeout(() => {
+      setPick(null);
+      setShown(null);
+      setQuiet(false);
+    }, 30_000);
+    return () => clearTimeout(timer);
+  }, [quiet]);
 
   // 家族用の入口:リンちゃんを2秒長押しすると登録画面へ(本人がふだん触らない場所)
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -690,8 +804,14 @@ export function Talk() {
           onPlay={() => {
             rec.stop();
             speaker.cancel();
+            setWakeHold(true);
+            // 再生に失敗しても、聞き続けに戻れるように
+            setTimeout(() => setWakeHold(false), 200_000);
           }}
-          onHeard={() => void heardMessage(message)}
+          onHeard={() => {
+            setWakeHold(false);
+            void heardMessage(message);
+          }}
           onDone={() => {
             messageReplyRef.current = null;
             void finishMessage(message);
@@ -747,6 +867,10 @@ export function Talk() {
         </>
       )}
       <StandaloneWarning />
+      {/* 聞き続けている間だけ出す、家族向けの小さな印。本人が読まないよう文字は出さない */}
+      {rec.wakeLive && (
+        <span role="img" aria-label="呼びかけモードで聞いています" className="fixed bottom-4 left-4 h-3 w-3 rounded-full bg-emerald-500" />
+      )}
       {rec.error && !autoListening && (
         <p role="alert" className="w-full rounded-2xl bg-rose-100 p-4 text-xl text-rose-900">
           {rec.error}

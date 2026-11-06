@@ -212,14 +212,93 @@ export function useRecognition(onFinal: (text: string) => void) {
 
   const stop = useCallback(() => recRef.current?.stop(), []);
 
+  // 呼びかけモード:画面を「聞いている」にせず、まわりの声を聞き続ける。
+  // 言葉のまとまりごとに onHeard へ渡す。ふつうの聞き取りが始まると、begin がこちらを止める
+  const [wakeLive, setWakeLive] = useState(false);
+  const wakeRecRef = useRef<Recognition | null>(null);
+  const wake = useCallback((onHeard: (text: string) => void, onEnd: (quick: boolean) => void) => {
+    const Ctor = getRecognitionCtor();
+    if (!Ctor || recRef.current) return;
+    const rec = new Ctor();
+    const startedAt = Date.now();
+    rec.lang = "ja-JP";
+    rec.continuous = true;
+    rec.interimResults = true;
+    // 長く聞き続けると言葉がたまり続けるので、ときどき聞き直す
+    const refresh = setTimeout(() => rec.stop(), 55_000);
+    const SETTLE_MS = 900;
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    let base = 0;
+    let text = "";
+    const flush = () => {
+      const heard = text.trim();
+      text = "";
+      if (heard && recRef.current === rec) onHeard(heard);
+    };
+    rec.onstart = () => {
+      logSpeech("呼びかけモード 聞き始め");
+      if (recRef.current === rec) setWakeLive(true);
+    };
+    rec.onresult = (e) => {
+      if (recRef.current !== rec) return;
+      // 端末によっては途中で結果の並びが振り直される
+      if (e.results.length < base) base = 0;
+      text = "";
+      for (let i = base; i < e.results.length; i++) text += e.results[i][0].transcript;
+      const length = e.results.length;
+      clearTimeout(settle);
+      settle = setTimeout(() => {
+        base = length;
+        flush();
+      }, SETTLE_MS);
+    };
+    rec.onerror = (e) => logSpeech(`呼びかけモード error=${e.error}`);
+    rec.onend = () => {
+      logSpeech(`呼びかけモード end +${Date.now() - startedAt}ms`);
+      clearTimeout(refresh);
+      clearTimeout(settle);
+      flush();
+      if (wakeRecRef.current === rec) {
+        wakeRecRef.current = null;
+        setWakeLive(false);
+      }
+      if (recRef.current !== rec) return;
+      recRef.current = null;
+      // すぐに終わるときは iPad に断られているので、間をあけてやり直す
+      onEnd(Date.now() - startedAt < 1500);
+    };
+    recRef.current = rec;
+    wakeRecRef.current = rec;
+    try {
+      rec.start();
+    } catch (err) {
+      logSpeech(`呼びかけモード start例外 ${String(err)}`);
+      clearTimeout(refresh);
+      recRef.current = null;
+      wakeRecRef.current = null;
+      onEnd(true);
+    }
+  }, []);
+
+  const stopWake = useCallback(() => {
+    const rec = wakeRecRef.current;
+    if (!rec) return;
+    wakeRecRef.current = null;
+    if (recRef.current === rec) recRef.current = null;
+    rec.abort();
+    setWakeLive(false);
+  }, []);
+
   // 画面を離れたら、マイクを手放す(別のタブがマイクを持ったままにならないように)
   useEffect(() => {
     const release = () => {
       const rec = recRef.current;
       if (rec) logSpeech(`release(画面を離れた) visibility=${document.visibilityState}`);
       recRef.current = null;
+      wakeRecRef.current = null;
       rec?.abort();
       setListening(false);
+      setWakeLive(false);
     };
     const onHide = () => document.visibilityState === "hidden" && release();
     document.addEventListener("visibilitychange", onHide);
@@ -231,7 +310,7 @@ export function useRecognition(onFinal: (text: string) => void) {
     };
   }, []);
 
-  return { listening, interim, error, start, stop };
+  return { listening, interim, error, start, stop, wake, stopWake, wakeLive };
 }
 
 export function useJapaneseVoices() {
