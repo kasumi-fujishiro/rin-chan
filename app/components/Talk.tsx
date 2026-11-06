@@ -643,7 +643,7 @@ export function Talk() {
           onContextMenu={(e) => e.preventDefault()}
           className="touch-none select-none [-webkit-touch-callout:none]"
         >
-          <Rin mood={mood} size={crowded ? 150 : 290} />
+          <Rin mood={mood} size={crowded ? 150 : 290} still={crowded} />
         </div>
         {room?.photo && shown?.spot && !pick ? (
           <div className="relative">

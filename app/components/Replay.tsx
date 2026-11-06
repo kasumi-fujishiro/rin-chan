@@ -265,7 +265,7 @@ export function Replay() {
     <main className="mx-auto flex min-h-dvh w-full max-w-4xl flex-col items-center justify-center gap-4 px-4 py-6">
       {!crowded && !view.listening && <p className="text-center text-3xl text-zinc-600">{clock}</p>}
       <div className="flex w-full items-center justify-center gap-6">
-        <Rin mood={mood} size={crowded ? 150 : 290} />
+        <Rin mood={mood} size={crowded ? 150 : 290} still={crowded} />
         {view.room?.photo && view.spot && !view.pick ? (
           <div className="relative">
             <SpotPhoto room={view.room.photo} spot={view.spot} className="max-h-[40dvh] shadow-lg" />

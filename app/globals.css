@@ -29,3 +29,78 @@ body {
   font-family: var(--font-sans);
   -webkit-text-size-adjust: 100%;
 }
+
+/* 動くリンちゃん。transform-origin は端末で差が出るので、translate で中心を指定する */
+.rin-breath {
+  transform-origin: 50% 100%;
+  animation: rin-breath 5s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes rin-breath {
+  50% {
+    transform: scale(1.012, 1.022);
+  }
+}
+
+.rin-head,
+.rin-ear {
+  transition: transform 600ms ease-in-out;
+}
+
+.rin-eye {
+  transform: translate(var(--cx), -4px) scale(1, 1) translate(calc(var(--cx) * -1), 4px);
+  transition: transform 120ms ease-in-out;
+}
+
+.rin-waves {
+  opacity: 0;
+  transition: opacity 400ms ease-in-out;
+}
+
+.rin-mouth-open {
+  display: none;
+}
+
+[data-blink] .rin-eye {
+  transform: translate(var(--cx), -4px) scale(1, 0.08) translate(calc(var(--cx) * -1), 4px);
+}
+
+/* 聞いている:耳を立てて、首をかしげる */
+[data-mood="listening"] .rin-head {
+  transform: translate(0, 14px) rotate(-7deg) translate(0, -14px);
+}
+
+[data-mood="listening"] .rin-ear {
+  transform: translate(var(--cx), -26px) scale(1, 1.16) translate(calc(var(--cx) * -1), 26px);
+}
+
+[data-mood="listening"] .rin-waves {
+  opacity: 1;
+}
+
+/* 話している:口だけを動かす */
+[data-mood="speaking"]:not([data-still]) .rin-mouth-closed {
+  display: none;
+}
+
+[data-mood="speaking"]:not([data-still]) .rin-mouth-open {
+  display: block;
+  animation: rin-mouth 0.36s ease-in-out infinite alternate;
+}
+
+@keyframes rin-mouth {
+  from {
+    transform: translate(0, 16px) scale(1, 0.3) translate(0, -16px);
+  }
+  to {
+    transform: translate(0, 16px) scale(1, 1) translate(0, -16px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rin-breath,
+  [data-mood="speaking"] .rin-mouth-open {
+    animation: none;
+  }
+}

@@ -2,6 +2,7 @@
 
 import type { RinPrompt } from "../lib/rinPrompt";
 import { usePhotoUrl } from "../lib/usePhotoUrl";
+import { Rin } from "./Rin";
 
 // リンちゃんからの話しかけ。iPad は押さないと声を出せないので、押したら話す
 export function RinPromptCard({ prompt, onTap }: { prompt: RinPrompt; onTap: () => void }) {
@@ -16,8 +17,9 @@ export function RinPromptCard({ prompt, onTap }: { prompt: RinPrompt; onTap: () 
         // eslint-disable-next-line @next/next/no-img-element
         <img src={photo} alt="" className="h-24 w-24 shrink-0 rounded-2xl object-cover" />
       ) : (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src="/rin_speaking.svg" alt="" className="pointer-events-none h-24 w-24 shrink-0" />
+        <span className="pointer-events-none flex h-24 w-24 shrink-0 items-center">
+          <Rin mood="speaking" size={96} still />
+        </span>
       )}
       <span className="flex flex-col">
         <span className="text-xl text-sky-800">リンちゃんから</span>

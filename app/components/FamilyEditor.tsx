@@ -75,6 +75,7 @@ export function FamilyEditor() {
           <Link href="/">話す画面</Link>
           <Link href="/log">試用の記録</Link>
           <Link href="/check">音声の確認</Link>
+          <Link href="/rin">リンちゃんの絵</Link>
         </nav>
       </header>
       <p className="rounded-2xl bg-amber-100 p-4 text-lg">
