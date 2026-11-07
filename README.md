@@ -129,6 +129,7 @@ npx wrangler secret put LINE_CHANNEL_SECRET         # (LINE から伝言を送�
 - LINE への送信は、合言葉(`RIN_APP_KEY`)が合うときだけ行います。URL を知っている人が勝手に家族へ送れないようにするためです
 - LINE から伝言を送るには、LINE Developers の Messaging API 設定で Webhook URL を `https://<あなたのドメイン>/api/line/webhook` にして「Webhook の利用」をオンにし、LINE Official Account Manager の応答設定で「応答メッセージ」をオフにします。KV は `npx wrangler kv namespace create rin-inbox` で作り、`wrangler.jsonc` の `RIN_INBOX` に ID を入れます。届いた伝言は、iPad が1分ごとに合言葉つきで取りに行きます
 - 家族の登録がないときは `samples/profile.json` の架空のデータで答えます
+- 家族の登録がない画面では、下に「架空のサンプル(絵つき)で試す」が出ます。押すと、架空の「ハルさん」の物・人・場所が、ここで描いた絵と置き場所の印つきで入ります(そのブラウザの中だけ)。家族の登録画面の「バックアップ」から消せます
 
 ## iPad で使うときの注意
 

@@ -21,6 +21,7 @@ import {
   type Spot,
 } from "../lib/familyStore";
 import { readAutoReportState, type AutoReportState } from "../lib/report";
+import { hasSample, loadSampleData, removeSampleData } from "../lib/sampleData";
 import { KINDS, type Kind } from "../lib/types";
 import { usePhotoUrl } from "../lib/usePhotoUrl";
 import { DictionarySuggestions } from "./DictionarySuggestions";
@@ -358,6 +359,31 @@ export function FamilyEditor() {
                       Safari は、7日ほど使わないとデータを消すことがあります。毎日使えば消えませんが、念のためバックアップを取っておいてください。(ホーム画面に追加すると声の聞き取りが使えないので、Safari のまま使ってください)
                     </p>
                   )}
+                  <section className={card}>
+                    <h3 className="text-xl font-bold">架空のサンプル(審査・お試し用)</h3>
+                    <p className="text-lg text-zinc-600">
+                      架空の「ハルさん」の物・人・場所を、絵と置き場所の印つきで入れます。ご家族の登録は消しません。
+                    </p>
+                    {hasSample(entries) ? (
+                      <button type="button" className="self-start rounded-xl bg-zinc-200 px-4 py-3 text-lg"
+                        onClick={async () => {
+                          await removeSampleData();
+                          setEntries(await listEntries());
+                        }}>
+                        サンプルを消す
+                      </button>
+                    ) : (
+                      <button type="button" className="self-start rounded-xl bg-amber-100 px-4 py-3 text-lg"
+                        onClick={async () => {
+                          await loadSampleData();
+                          setSettings((await getSettings()) ?? DEFAULT_SETTINGS);
+                          setEntries(await listEntries());
+                          setRestored((n) => n + 1);
+                        }}>
+                        サンプルを入れる
+                      </button>
+                    )}
+                  </section>
                   <Backup
                     onImported={async () => {
                       setSettings((await getSettings()) ?? DEFAULT_SETTINGS);

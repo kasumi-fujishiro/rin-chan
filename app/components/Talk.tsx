@@ -27,6 +27,7 @@ import type { Kind, Profile } from "../lib/types";
 import { usePhotoUrl } from "../lib/usePhotoUrl";
 import { useWakeLock } from "../lib/useWakeLock";
 import { useAutoReport } from "../lib/report";
+import { loadSampleData } from "../lib/sampleData";
 import { pullLineMessages } from "../lib/lineInbox";
 import {
   clearConversation,
@@ -92,6 +93,8 @@ export function Talk() {
   const [pickBusy, setPickBusy] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
+  // 家族の登録がまだないブラウザ(審査やお試し)では、架空のサンプルを入れるボタンを出す
+  const [fresh, setFresh] = useState(false);
   // リンちゃんからの話しかけを出すかの判断に使う(最後に話した時刻と、30秒ごとの時計)
   const [lastActivity, setLastActivity] = useState(0);
   const [now, setNow] = useState(0);
@@ -143,6 +146,7 @@ export function Talk() {
       setEntries(list);
       setMessages(msgs);
       setSettings(settings);
+      setFresh(list.length === 0);
       if (settings?.voice) setVoiceSetting(settings.voice);
       const nextProfile = toProfile(settings, list);
       // 閉じている間に区切れた会話は、今日のメモにまとめておく
@@ -927,6 +931,18 @@ export function Talk() {
       )}
       {!profile && (
         <p className="text-base text-zinc-400">まだ家族の登録がありません(見本の内容で動いています)</p>
+      )}
+      {fresh && (
+        <button
+          type="button"
+          onClick={async () => {
+            await loadSampleData();
+            location.reload();
+          }}
+          className="fixed bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-white px-5 py-2 text-base text-zinc-600 shadow"
+        >
+          架空のサンプル(絵つき)で試す
+        </button>
       )}
       {/* 長押しが使えないときのための入口。本人の目に入りにくいよう、小さく薄くする */}
       <Link href="/family" className="fixed right-4 bottom-3 text-sm text-zinc-400">
