@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { getSettings, listEntries, toProfile, type Settings } from "./familyStore";
+import { getSettings, listEntries, toProfile } from "./familyStore";
 import { readTrialLog, readTrialMemos, type TrialEntry, type TrialMemo } from "./trialLog";
 
 export const isToday = (at: string) => new Date(at).toDateString() === new Date().toDateString();
@@ -35,16 +35,17 @@ export const DEFAULT_REPORT_TIME = "21:00";
 const SENT_KEY = "rin-auto-report-v1";
 const MAX_TRIES = 5;
 
-type SentState = { date: string; sent: boolean; tries: number };
+// 自動の報告の結果。家族の画面に「送りました」「送れませんでした」を出すのにも使う
+export type AutoReportState = { date: string; sent: boolean; tries: number; at?: string; reason?: string };
 
-function readSent(): SentState | null {
+export function readAutoReportState(): AutoReportState | null {
   try {
     return JSON.parse(localStorage.getItem(SENT_KEY) ?? "null");
   } catch {
     return null;
   }
 }
-function writeSent(state: SentState) {
+function writeSent(state: AutoReportState) {
   try {
     localStorage.setItem(SENT_KEY, JSON.stringify(state));
   } catch {}
@@ -56,23 +57,26 @@ const minutesOf = (hhmm: string) => {
 };
 
 // 決まった時間に、今日の報告を自動で LINE に送る。
-// 記録は iPad の中にしかないので、話す画面を開いている iPad が送る(サーバーは時間を知らない)
-export function useAutoReport(settings: Settings | null) {
+// 記録は iPad の中にしかないので、話す画面を開いている iPad が送る(サーバーは時間を知らない)。
+// 家族の画面で設定を変えても届くように、毎分 iPad の設定を読み直す
+export function useAutoReport() {
   const busy = useRef(false);
-  const auto = settings?.autoReport;
-  const lineKey = settings?.lineKey;
   useEffect(() => {
-    if (!auto?.enabled || !lineKey) return;
     const check = async () => {
       if (busy.current) return;
+      const settings = await getSettings();
+      const auto = settings?.autoReport;
+      const lineKey = settings?.lineKey;
+      if (!auto?.enabled || !lineKey) return;
       const now = new Date();
       const today = now.toDateString();
       if (now.getHours() * 60 + now.getMinutes() < minutesOf(auto.time || DEFAULT_REPORT_TIME)) return;
-      const state = readSent();
+      const state = readAutoReportState();
       const tries = state?.date === today ? state.tries : 0;
       if ((state?.date === today && state.sent) || tries >= MAX_TRIES) return;
       busy.current = true;
-      writeSent({ date: today, sent: false, tries: tries + 1 });
+      const at = now.toISOString();
+      writeSent({ date: today, sent: false, tries: tries + 1, at, reason: "送っています" });
       try {
         const report = await draftReport(readTrialLog(), readTrialMemos());
         const date = now.toLocaleDateString("ja-JP", { month: "long", day: "numeric", weekday: "short" });
@@ -80,9 +84,10 @@ export function useAutoReport(settings: Settings | null) {
           ? `【リンちゃんの今日の報告(自動)】${date}\n${report}`
           : `【リンちゃんの今日の報告(自動)】${date}\n今日は、リンちゃんとの会話の記録はありませんでした。`;
         const result = await sendReport(text, lineKey);
-        if (result.sent) writeSent({ date: today, sent: true, tries: tries + 1 });
+        writeSent({ date: today, sent: result.sent, tries: tries + 1, at, reason: result.sent ? undefined : (result.reason ?? "送れませんでした") });
       } catch {
         // 次の確認でもう一度試す(1日に MAX_TRIES 回まで)
+        writeSent({ date: today, sent: false, tries: tries + 1, at, reason: "つながりませんでした" });
       } finally {
         busy.current = false;
       }
@@ -90,5 +95,5 @@ export function useAutoReport(settings: Settings | null) {
     void check();
     const timer = setInterval(check, 60_000);
     return () => clearInterval(timer);
-  }, [auto?.enabled, auto?.time, lineKey]);
+  }, []);
 }

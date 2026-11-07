@@ -20,6 +20,7 @@ import {
   type Settings,
   type Spot,
 } from "../lib/familyStore";
+import { readAutoReportState, type AutoReportState } from "../lib/report";
 import { KINDS, type Kind } from "../lib/types";
 import { usePhotoUrl } from "../lib/usePhotoUrl";
 import { DictionarySuggestions } from "./DictionarySuggestions";
@@ -72,9 +73,13 @@ export function FamilyEditor() {
   const shown = entries.filter((e) => e.kind === kind);
   const [panel, setPanel] = useState<PanelId | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [autoReportState, setAutoReportState] = useState<AutoReportState | null>(null);
   useEffect(() => {
-    // 伝言の数は、伝言の画面を閉じたときにも読み直す
-    if (panel === null) listMessages().then(setMessages);
+    // 伝言の数や自動の報告の結果は、編集の画面を閉じたときにも読み直す
+    if (panel !== null) return;
+    listMessages().then(setMessages);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAutoReportState(readAutoReportState());
   }, [panel, restored]);
 
   const saveMerged = async (patch: Partial<Settings>) => {
@@ -84,6 +89,7 @@ export function FamilyEditor() {
     setSettings((s) => ({ ...s, ...patch }));
   };
 
+  const autoState = autoReportState;
   const count = (k: Kind) => entries.filter((e) => e.kind === k).length;
   const noSpot = entries.filter((e) => e.kind === "物" && !e.spot).length;
   const day = settings.dayService;
@@ -125,8 +131,12 @@ export function FamilyEditor() {
       lines: [
         settings.lineKey ? "合言葉:入っています" : "合言葉:まだです",
         settings.autoReport?.enabled ? `毎日の報告:${settings.autoReport.time} に自動で送る` : "毎日の報告:自動では送らない",
+        ...(autoState?.date === new Date().toDateString() && autoState.sent && autoState.at
+          ? [`今日の報告:${new Date(autoState.at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })} に送りました`]
+          : []),
         `返事の知らせ:${settings.notifyReplies === false ? "送らない" : "送る"}`,
       ],
+      warn: autoState?.date === new Date().toDateString() && !autoState.sent ? `今日の報告:${autoState.reason ?? "送れませんでした"}` : undefined,
     },
     {
       id: "voice",

@@ -108,7 +108,7 @@ export function Talk() {
   const reaskRef = useRef(0);
   const speaker = useSpeaker();
   useWakeLock();
-  useAutoReport(settings);
+  useAutoReport();
   // 家族が選んだ声・速さ・高さで話す。slow は聞き返しなどでさらにゆっくりにするときの倍率
   const voices = useJapaneseVoices();
   const [voiceSetting, setVoiceSetting] = useState(DEFAULT_VOICE);
