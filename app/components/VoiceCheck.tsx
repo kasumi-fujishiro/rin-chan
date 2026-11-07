@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { DeviceChecklist } from "./DeviceChecklist";
 import { StandaloneWarning } from "./StandaloneWarning";
@@ -80,6 +81,13 @@ export function VoiceCheck() {
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-4 py-8 sm:px-8">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-3xl font-bold">音声の確認</h1>
+        <nav className="flex gap-4 text-lg underline">
+          <Link href="/">話す画面</Link>
+          <Link href="/family">家族の登録</Link>
+        </nav>
+      </header>
       <section className="flex flex-col items-center gap-6">
         <Rin mood={mood} size={320} />
         <p className="min-h-[3em] text-center text-3xl leading-relaxed" aria-live="polite">
