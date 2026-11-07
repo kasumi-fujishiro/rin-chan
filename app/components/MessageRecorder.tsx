@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { deleteMessage, listMessages, putMessage, type Message } from "../lib/familyStore";
 
 const MAX_SECONDS = 30;
+// 伝言が増えると見にくいので、ふだんは新しいものだけを出す
+const SHOWN_MESSAGES = 3;
 
 // iPad の Safari は audio/mp4、ほかのブラウザは audio/webm で録れる
 function pickMimeType() {
@@ -23,6 +25,7 @@ export function MessageRecorder({ defaultFrom }: { defaultFrom: string }) {
   const [draft, setDraft] = useState<Blob | null>(null);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
+  const [showAll, setShowAll] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -85,6 +88,10 @@ export function MessageRecorder({ defaultFrom }: { defaultFrom: string }) {
     setMessages(await listMessages());
   };
 
+  const newestFirst = [...messages].sort((a, b) => b.createdAt - a.createdAt);
+  const shown = showAll ? newestFirst : newestFirst.slice(0, SHOWN_MESSAGES);
+  const hidden = newestFirst.length - SHOWN_MESSAGES;
+
   return (
     <section className={card}>
       <h2 className="text-2xl font-bold">家族からの伝言(声)</h2>
@@ -143,7 +150,7 @@ export function MessageRecorder({ defaultFrom }: { defaultFrom: string }) {
       {error && <p className="text-xl text-rose-700">{error}</p>}
 
       <ul className="grid gap-3">
-        {messages.map((m) => (
+        {shown.map((m) => (
           <li key={m.id} className="flex flex-wrap items-center gap-3 rounded-2xl bg-amber-50 p-3 text-lg">
             <span className="font-bold">{m.from}</span>
             <span className="text-zinc-500">{new Date(m.createdAt).toLocaleString("ja-JP")}</span>
@@ -172,6 +179,15 @@ export function MessageRecorder({ defaultFrom }: { defaultFrom: string }) {
         ))}
         {messages.length === 0 && <p className="text-lg text-zinc-500">まだありません</p>}
       </ul>
+      {hidden > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAll((v) => !v)}
+          className="self-center rounded-xl bg-amber-100 px-6 py-3 text-lg"
+        >
+          {showAll ? "新しい伝言だけにする" : `前の伝言も見る(あと${hidden}件)`}
+        </button>
+      )}
     </section>
   );
 }
