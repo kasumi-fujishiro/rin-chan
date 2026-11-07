@@ -20,6 +20,8 @@ export type Settings = {
   lineSenders?: LineSender[];
   // 呼びかけモード。オンの間は、押さなくても「リンちゃん」や探し物の言葉に反応する(最初はオフ)
   wakeMode?: boolean;
+  // 毎日決まった時間に、今日の報告を自動で LINE に送る(time は "21:00" の形)
+  autoReport?: { enabled: boolean; time: string };
 };
 
 export type LineSender = { userId: string; lineName: string; callName: string };

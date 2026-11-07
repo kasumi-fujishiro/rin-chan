@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getSettings, listEntries, toProfile } from "../lib/familyStore";
+import { getSettings } from "../lib/familyStore";
+import { draftReport, sendReport } from "../lib/report";
 import type { TrialEntry, TrialMemo } from "../lib/trialLog";
-
-const isToday = (at: string) => new Date(at).toDateString() === new Date().toDateString();
 
 // 今日の記録を Claude が報告文にまとめ、家族が確認してから LINE に送る
 export function ReportPanel({ log, memos }: { log: TrialEntry[]; memos: TrialMemo[] }) {
@@ -21,29 +20,12 @@ export function ReportPanel({ log, memos }: { log: TrialEntry[]; memos: TrialMem
   }, []);
 
   const draft = async () => {
-    const records = log.filter((e) => isToday(e.at));
-    const todaysMemos = memos.filter((m) => isToday(m.at));
-    if (records.length === 0 && todaysMemos.length === 0) {
-      setMessage("今日の記録がまだありません。");
-      return;
-    }
     setBusy(true);
     setMessage("");
     try {
-      const [settings, entries] = await Promise.all([getSettings(), listEntries()]);
-      const res = await fetch("/api/report", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "draft",
-          records,
-          memos: todaysMemos,
-          profile: toProfile(settings, entries),
-        }),
-      });
-      const data = (await res.json()) as { report: string };
-      setReport(data.report);
-      if (!data.report) setMessage("報告を作れませんでした。もう一度試してください。");
+      const text = await draftReport(log, memos);
+      setReport(text);
+      if (!text) setMessage("今日の記録がまだありません。");
     } catch {
       setMessage("うまくつながりませんでした。もう一度試してください。");
     } finally {
@@ -55,14 +37,7 @@ export function ReportPanel({ log, memos }: { log: TrialEntry[]; memos: TrialMem
     if (!confirm("この報告を LINE に送ります。よろしいですか?")) return;
     setBusy(true);
     try {
-      // 合言葉は家族の登録画面で入れたもの
-      const lineKey = (await getSettings())?.lineKey ?? "";
-      const res = await fetch("/api/report", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-rin-key": lineKey },
-        body: JSON.stringify({ action: "send", text: report }),
-      });
-      const data = (await res.json()) as { sent: boolean; reason?: string };
+      const data = await sendReport(report, (await getSettings())?.lineKey ?? "");
       setMessage(data.sent ? "LINE に送りました" : (data.reason ?? "送れませんでした"));
     } catch {
       setMessage("送れませんでした");

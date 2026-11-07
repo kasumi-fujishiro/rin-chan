@@ -26,6 +26,7 @@ import {
 import type { Kind, Profile } from "../lib/types";
 import { usePhotoUrl } from "../lib/usePhotoUrl";
 import { useWakeLock } from "../lib/useWakeLock";
+import { useAutoReport } from "../lib/report";
 import { pullLineMessages } from "../lib/lineInbox";
 import {
   clearConversation,
@@ -107,6 +108,7 @@ export function Talk() {
   const reaskRef = useRef(0);
   const speaker = useSpeaker();
   useWakeLock();
+  useAutoReport(settings);
   // 家族が選んだ声・速さ・高さで話す。slow は聞き返しなどでさらにゆっくりにするときの倍率
   const voices = useJapaneseVoices();
   const [voiceSetting, setVoiceSetting] = useState(DEFAULT_VOICE);

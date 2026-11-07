@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { listMessages, putMessage, type LineSender, type Settings } from "../lib/familyStore";
+import { DEFAULT_REPORT_TIME } from "../lib/report";
 
 type Status = { lineReady: boolean; keyConfigured: boolean } | null;
 
@@ -11,12 +12,15 @@ export function LineSettings({
   onSave,
 }: {
   settings: Settings;
-  onSave: (patch: Pick<Settings, "lineKey" | "notifyReplies" | "lineSenders">) => Promise<void>;
+  onSave: (patch: Partial<Pick<Settings, "lineKey" | "notifyReplies" | "lineSenders" | "autoReport">>) => Promise<void>;
 }) {
   const [status, setStatus] = useState<Status>(null);
   const [key, setKey] = useState(settings.lineKey ?? "");
   const [notify, setNotify] = useState(settings.notifyReplies ?? true);
   const [message, setMessage] = useState("");
+  const [autoOn, setAutoOn] = useState(settings.autoReport?.enabled ?? false);
+  const [autoTime, setAutoTime] = useState(settings.autoReport?.time ?? DEFAULT_REPORT_TIME);
+  const autoReport = { enabled: autoOn, time: autoTime || DEFAULT_REPORT_TIME };
   const [senders, setSenders] = useState<LineSender[]>(settings.lineSenders ?? []);
 
   // 呼び名を決めたら、まだ終わっていない伝言の「誰から」も直す
@@ -38,7 +42,7 @@ export function LineSettings({
   }, []);
 
   const test = async () => {
-    await onSave({ lineKey: key.trim(), notifyReplies: notify });
+    await onSave({ lineKey: key.trim(), notifyReplies: notify, autoReport });
     setMessage("送っています…");
     try {
       const res = await fetch("/api/report", {
@@ -94,11 +98,27 @@ export function LineSettings({
         />
         伝言にご本人が返事をしたら、その場で LINE に知らせる
       </label>
+      <div className="flex flex-col gap-2 rounded-2xl bg-amber-50 p-3">
+        <label className="flex flex-wrap items-center gap-3 text-lg">
+          <input type="checkbox" className="h-7 w-7" checked={autoOn} onChange={(e) => setAutoOn(e.target.checked)} />
+          毎日
+          <input
+            type="time"
+            className="rounded-xl border-2 p-2 text-xl"
+            value={autoTime}
+            onChange={(e) => setAutoTime(e.target.value)}
+          />
+          に、今日の報告を自動で LINE に送る
+        </label>
+        <p className="text-base text-zinc-600">
+          ご家族が読んで直す前に、そのまま送ります。送るのはこの iPad なので、その時間に話す画面を開いたままにしてください(閉じていたら、その日のうちに開いたときに送ります)。
+        </p>
+      </div>
       <div className="flex flex-wrap gap-3">
         <button
           type="button"
           onClick={async () => {
-            await onSave({ lineKey: key.trim(), notifyReplies: notify });
+            await onSave({ lineKey: key.trim(), notifyReplies: notify, autoReport });
             setMessage("保存しました");
           }}
           className="rounded-2xl bg-amber-600 px-6 py-4 text-xl text-white"
