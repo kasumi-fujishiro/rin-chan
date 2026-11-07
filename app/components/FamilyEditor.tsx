@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   DEFAULT_SETTINGS,
   deleteEntry,
@@ -140,6 +140,15 @@ export function FamilyEditor() {
             </button>
           ))}
         </div>
+        {kind === "場所" && (
+          <p className="rounded-xl bg-rose-50 p-3 text-lg">
+            物の置き場所の赤い丸は、
+            <button type="button" onClick={() => { setKind("物"); setEditing(null); }} className="font-bold text-rose-700 underline">
+              「物」のタブ
+            </button>
+            で付けます。ここでは部屋の写真を登録します。
+          </p>
+        )}
         <EntryForm key={editing?.id ?? `new-${kind}`} kind={kind} entry={editing}
           rooms={entries.filter((e) => e.kind === "場所" && e.photo && e.id !== editing?.id)}
           onCreateRoom={async (name, photo) => {
@@ -325,7 +334,15 @@ function EntryForm({
   const [note, setNote] = useState(entry?.note ?? "");
   const [photo, setPhoto] = useState<Blob | undefined>(entry?.photo);
   const [spot, setSpot] = useState<Spot | undefined>(entry?.spot);
-  const room = rooms.find((r) => r.id === spot?.roomId);
+  // 部屋を選んだだけでは丸を付けない(押していない場所に丸が出ないように)。部屋が1つなら最初から写真を出す
+  const [chosenRoomId, setChosenRoomId] = useState<string>();
+  const roomId = chosenRoomId ?? spot?.roomId ?? (rooms.length === 1 ? rooms[0].id : undefined);
+  const room = rooms.find((r) => r.id === roomId);
+  const formRef = useRef<HTMLDivElement>(null);
+  // 一覧の下のほうで「直す」を押しても、入力欄が見えるように
+  useEffect(() => {
+    if (entry) formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [entry]);
   const [busy, setBusy] = useState(false);
   const [newRoomName, setNewRoomName] = useState("");
   const [addingRoom, setAddingRoom] = useState(false);
@@ -340,7 +357,7 @@ function EntryForm({
       name: name.trim(),
       note: note.trim(),
       photo,
-      spot: room ? spot : undefined,
+      spot: spot && rooms.some((r) => r.id === spot.roomId) ? spot : undefined,
       updatedAt: Date.now(),
     });
   };
@@ -359,7 +376,7 @@ function EntryForm({
   const stepTitle = "text-lg font-bold";
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border-2 border-dashed border-amber-300 p-4">
+    <div ref={formRef} className="flex scroll-mt-4 flex-col gap-3 rounded-2xl border-2 border-dashed border-amber-300 p-4">
       <h3 className="text-xl font-bold">{entry ? `「${entry.name}」を直す` : `「${kind}」を足す`}</h3>
 
       <div className={step}>
@@ -387,8 +404,12 @@ function EntryForm({
           {rooms.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {rooms.map((r) => (
-                <button key={r.id} type="button" onClick={() => { setSpot({ roomId: r.id, x: 0.5, y: 0.5 }); setAddingRoom(false); }}
-                  className={`rounded-xl px-4 py-2 text-lg ${spot?.roomId === r.id ? "bg-amber-600 text-white" : "bg-white"}`}>
+                <button key={r.id} type="button" onClick={() => {
+                  setChosenRoomId(r.id);
+                  if (spot?.roomId !== r.id) setSpot(undefined);
+                  setAddingRoom(false);
+                }}
+                  className={`rounded-xl px-4 py-2 text-lg ${roomId === r.id ? "bg-amber-600 text-white" : "bg-white"}`}>
                   {r.name}
                 </button>
               ))}
@@ -407,7 +428,8 @@ function EntryForm({
                 <input type="file" accept="image/*" className="hidden" disabled={!newRoomName.trim()}
                   onChange={(e) => pickPhoto(e.target.files?.[0], async (b) => {
                     const created = await onCreateRoom(newRoomName.trim(), b);
-                    setSpot({ roomId: created.id, x: 0.5, y: 0.5 });
+                    setChosenRoomId(created.id);
+                    setSpot(undefined);
                     setNewRoomName("");
                     setAddingRoom(false);
                   })} />
@@ -416,12 +438,16 @@ function EntryForm({
           )}
           {room?.photo && (
             <>
-              <p className="text-lg font-bold text-rose-700">写真の上で、置いてある場所を押してください(赤い丸が動きます)</p>
-              <SpotPhoto room={room.photo} spot={spot} className="max-h-80"
+              <p className="text-lg font-bold text-rose-700">
+                {spot ? "赤い丸を付けました。押し直すと動きます" : "写真の上で、置いてある場所を押してください。赤い丸が付きます"}
+              </p>
+              <SpotPhoto room={room.photo} spot={spot} className="max-h-80 self-start"
                 onPick={(x, y) => setSpot({ roomId: room.id, x, y })} />
-              <button type="button" onClick={() => setSpot(undefined)} className="self-start text-base text-zinc-500 underline">
-                置き場所を示さない
-              </button>
+              {spot && (
+                <button type="button" onClick={() => setSpot(undefined)} className="self-start text-base text-zinc-500 underline">
+                  赤い丸を消す
+                </button>
+              )}
             </>
           )}
         </div>
@@ -475,6 +501,9 @@ function EntryRow({
         {roomName && <p className="text-lg text-rose-700">置き場所:{roomName}の写真に印あり</p>}
       </div>
       <div className="flex shrink-0 flex-col gap-2">
+        {entry.kind === "物" && !roomName && (
+          <button type="button" onClick={onEdit} className="rounded-xl bg-rose-600 px-4 py-2 text-lg text-white">置き場所を付ける</button>
+        )}
         <button type="button" onClick={onEdit} className="rounded-xl bg-amber-100 px-4 py-2 text-lg">直す</button>
         <button type="button" onClick={onDelete} className="rounded-xl bg-zinc-200 px-4 py-2 text-lg">消す</button>
       </div>

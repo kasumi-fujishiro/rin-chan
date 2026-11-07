@@ -19,7 +19,7 @@ export function SpotPhoto({
   if (!url) return null;
   return (
     <div
-      className={`relative inline-block select-none ${onPick ? "cursor-crosshair" : ""} ${className}`}
+      className={`relative inline-block w-fit max-w-full select-none ${onPick ? "cursor-crosshair" : ""} ${className}`}
       onClick={(e) => {
         if (!onPick) return;
         const r = e.currentTarget.getBoundingClientRect();
